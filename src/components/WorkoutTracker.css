@@ -1,0 +1,153 @@
+.workout-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.goal-setup {
+  text-align: center;
+}
+
+.welcome-text {
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 60px;
+  line-height: 1.2;
+}
+
+.goal-input-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: center;
+}
+
+.goal-input {
+  font-size: 3rem;
+  font-weight: 300;
+  text-align: center;
+  border: none;
+  border-bottom: 2px solid #d2d2d7;
+  background: transparent;
+  color: #1d1d1f;
+  padding: 10px;
+  width: 200px;
+  outline: none;
+  transition: border-color 0.3s ease;
+}
+
+.goal-input:focus {
+  border-bottom-color: #007aff;
+}
+
+.set-goal-btn {
+  background-color: #007aff;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.set-goal-btn:hover {
+  background-color: #0056cc;
+}
+
+.progress-display {
+  text-align: center;
+  width: 100%;
+}
+
+.main-number {
+  font-size: 8rem;
+  font-weight: 200;
+  color: #1d1d1f;
+  margin-bottom: 20px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.status-text {
+  font-size: 1.5rem;
+  color: #6e6e73;
+  margin-bottom: 10px;
+}
+
+.completed-text {
+  font-size: 1.1rem;
+  color: #86868b;
+  margin-bottom: 60px;
+}
+
+.input-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+}
+
+.rep-input {
+  font-size: 1.5rem;
+  text-align: center;
+  border: 2px solid #d2d2d7;
+  border-radius: 12px;
+  padding: 15px;
+  width: 120px;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  outline: none;
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+}
+
+.rep-input:focus {
+  border-color: #007aff;
+  background: white;
+}
+
+.add-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background-color: #007aff;
+  color: white;
+  font-size: 2rem;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.add-btn:hover {
+  background-color: #0056cc;
+}
+
+.add-btn:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .welcome-text {
+    font-size: 2rem;
+  }
+  
+  .main-number {
+    font-size: 6rem;
+  }
+  
+  .goal-input {
+    font-size: 2.5rem;
+    width: 150px;
+  }
+}
