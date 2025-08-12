@@ -36,6 +36,7 @@ const WorkoutTracker: React.FC = () => {
   const [isTestingMode, setIsTestingMode] = useState(false); // Always default to Off
   const [hasTestData, setHasTestData] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [lastSyncPoint, setLastSyncPoint] = useState(0);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -91,6 +92,8 @@ const WorkoutTracker: React.FC = () => {
       if (response.data) {
         setCurrentSession(response.data);
         setIsStarted(true);
+        // Set sync point based on current progress for existing sessions
+        setLastSyncPoint(Math.floor(response.data.completed / 500) * 500);
       }
     } catch (error) {
       console.error('Failed to fetch current session:', error);
@@ -117,6 +120,7 @@ const WorkoutTracker: React.FC = () => {
         createdAt: now.toISOString()
       });
       setCurrentSession(response.data);
+      setLastSyncPoint(0); // Reset sync point for new session
     } catch (error) {
       console.error('Failed to start workout:', error);
     }
@@ -139,7 +143,7 @@ const WorkoutTracker: React.FC = () => {
         setNeedsSync(true); // Mark as needing sync after progress update
         
         // Auto-sync every 500 reps (but not when goal is reached, as endWorkout will handle that)
-        if (newCompleted % 500 === 0 && newCompleted < currentSession.goal) {
+        if (newCompleted >= lastSyncPoint + 500 && newCompleted < currentSession.goal) {
           console.log('Auto-sync triggered at', newCompleted, 'reps');
           // Actually perform the sync to database
           try {
@@ -148,6 +152,7 @@ const WorkoutTracker: React.FC = () => {
               completed: newCompleted
             });
             setNeedsSync(false); // Auto-sync completed, reset sync state
+            setLastSyncPoint(Math.floor(newCompleted / 500) * 500); // Update sync point
             console.log('Auto-sync completed for', newCompleted, 'reps');
           } catch (error) {
             console.error('Auto-sync failed:', error);
@@ -155,11 +160,38 @@ const WorkoutTracker: React.FC = () => {
           }
         }
         
-        // Auto-complete session when goal is reached
+        // Final sync and auto-complete session when goal is reached
         if (newCompleted >= currentSession.goal) {
-          setTimeout(() => {
-            endWorkout();
-          }, 1000); // Small delay to let user see the achievement
+          // Final sync: update progress AND end session in one operation
+          try {
+            const now = new Date();
+            await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+              action: 'finalSync',
+              completed: newCompleted,
+              endTime: now.toISOString()
+            });
+            
+            // Create daily summary with correct final count
+            const today = new Date();
+            const localDate = today.toLocaleDateString("en-CA");
+            await axios.post(`${API_BASE}/daily-summaries`, {
+              date: `${localDate}T00:00:00.000`,
+              totalJumps: newCompleted,
+              sessionsCount: 1,
+              testing: isTestingMode,
+              createdAt: today.toISOString(),
+              updatedAt: today.toISOString()
+            });
+            
+            // Update UI state for completion
+            setCompletedSession({...currentSession, completed: newCompleted});
+            setCurrentSession(null);
+            setIsWorkoutComplete(true);
+            await checkForTestData();
+            
+          } catch (error) {
+            console.error('Failed to complete workout:', error);
+          }
         }
       } catch (error) {
         console.error('Failed to update progress:', error);
@@ -190,14 +222,16 @@ const WorkoutTracker: React.FC = () => {
     
     try {
       const now = new Date();
+      
+      // End the session (for manual end workout button)
       await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'end',
         endTime: now.toISOString()
       });
       
-      // Update daily summary (using user's local timezone)
+      // Create daily summary with current progress
       const today = new Date();
-      const localDate = today.toLocaleDateString("en-CA"); // YYYY-MM-DD format in user's timezone
+      const localDate = today.toLocaleDateString("en-CA");
       await axios.post(`${API_BASE}/daily-summaries`, {
         date: `${localDate}T00:00:00.000`,
         totalJumps: currentSession.completed,

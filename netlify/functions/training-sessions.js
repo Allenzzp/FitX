@@ -136,6 +136,13 @@ exports.handler = async (event, context) => {
             updateFields.pausedAt = null;
             updateFields.totalPausedDuration = (session.totalPausedDuration || 0) + pauseDuration;
           }
+        } else if (updateData.action === 'finalSync') {
+          // Final sync: update progress AND end session in one operation
+          updateFields.completed = updateData.completed;
+          updateFields.isActive = false;
+          updateFields.endTime = updateData.endTime ? new Date(updateData.endTime) : getCurrentTime();
+          updateFields.isPaused = false;
+          updateFields.pausedAt = null;
         } else if (updateData.action === 'end') {
           updateFields.isActive = false;
           updateFields.endTime = updateData.endTime ? new Date(updateData.endTime) : getCurrentTime();
