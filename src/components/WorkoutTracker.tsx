@@ -174,8 +174,10 @@ const WorkoutTracker: React.FC = () => {
             // Create daily summary with correct final count
             const today = new Date();
             const localDate = today.toLocaleDateString("en-CA");
+            // Create timezone-aware date that preserves the local date
+            const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
             await axios.post(`${API_BASE}/daily-summaries`, {
-              date: `${localDate}T00:00:00.000`,
+              date: localMidnight,
               totalJumps: newCompleted,
               sessionsCount: 1,
               testing: isTestingMode,
@@ -232,8 +234,10 @@ const WorkoutTracker: React.FC = () => {
       // Create daily summary with current progress
       const today = new Date();
       const localDate = today.toLocaleDateString("en-CA");
+      // Create timezone-aware date that preserves the local date
+      const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
       await axios.post(`${API_BASE}/daily-summaries`, {
-        date: `${localDate}T00:00:00.000`,
+        date: localMidnight,
         totalJumps: currentSession.completed,
         sessionsCount: 1,
         testing: isTestingMode,
