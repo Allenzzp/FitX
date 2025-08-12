@@ -4,9 +4,13 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  padding: 40px;
-  max-width: 600px;
+  padding: 80px 15px 20px 15px; /* Reduced horizontal padding for mobile */
+  width: 100%;
+  max-width: 100vw; /* Ensure it never exceeds viewport width */
   margin: 0 auto;
+  position: relative;
+  overflow-x: hidden; /* Prevent horizontal scrolling on container */
+  box-sizing: border-box;
 }
 
 .goal-setup {
@@ -14,78 +18,123 @@
 }
 
 .welcome-text {
-  font-size: 2.5rem;
+  font-size: 1.8rem;
   font-weight: 600;
-  color: #1d1d1f;
-  margin-bottom: 60px;
+  color: #2C2C2E;
+  margin-bottom: 40px;
   line-height: 1.2;
+  text-align: center;
 }
 
 .goal-input-container {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 30px;
   justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .goal-input {
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: 300;
   text-align: center;
   border: none;
   border-bottom: 2px solid #d2d2d7;
   background: transparent;
-  color: #1d1d1f;
-  padding: 10px;
-  width: 200px;
+  color: #2C2C2E;
+  padding: 15px;
+  width: 100%;
+  max-width: 280px; /* Maximum width with responsive constraint */
   outline: none;
+  box-sizing: border-box;
   transition: border-color 0.3s ease;
+  -moz-appearance: textfield;
+}
+
+.goal-input::-webkit-outer-spin-button,
+.goal-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .goal-input:focus {
-  border-bottom-color: #007aff;
+  border-bottom-color: #81D8D0;
 }
 
 .set-goal-btn {
-  background-color: #007aff;
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
   color: white;
   border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
+  padding: 16px 32px;
+  border-radius: 12px;
   font-size: 1.1rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+  max-width: 280px;
+  box-shadow: 
+    0 4px 12px rgba(129, 216, 208, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+  letter-spacing: -0.01em;
 }
 
 .set-goal-btn:hover {
-  background-color: #0056cc;
+  background: linear-gradient(180deg, #6BC5BD 0%, #55B2AA 100%);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 6px 20px rgba(129, 216, 208, 0.4),
+    0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .progress-display {
   text-align: center;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .main-number {
-  font-size: 8rem;
+  font-size: 4rem;
   font-weight: 200;
-  color: #1d1d1f;
+  color: #2C2C2E;
   margin-bottom: 20px;
   line-height: 1;
   letter-spacing: -0.02em;
 }
 
-.status-text {
-  font-size: 1.5rem;
+.remaining-label {
+  font-size: 1.2rem;
   color: #6e6e73;
   margin-bottom: 10px;
+  text-align: center;
+  font-weight: 500;
 }
 
-.completed-text {
-  font-size: 1.1rem;
+.progress-sync-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.goal-progress {
+  font-size: 1.4rem;
   color: #86868b;
-  margin-bottom: 60px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.achievement-text {
+  font-size: 1rem;
+  color: #34c759;
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 500;
 }
 
 .input-container {
@@ -93,6 +142,9 @@
   align-items: center;
   justify-content: center;
   gap: 15px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .rep-input {
@@ -103,22 +155,26 @@
   padding: 15px;
   width: 120px;
   background: #f5f5f7;
-  color: #1d1d1f;
+  color: #2C2C2E;
   outline: none;
   transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 
 .rep-input:focus {
-  border-color: #007aff;
+  border-color: #81D8D0;
   background: white;
 }
 
+.rep-input.default-value {
+  color: #86868b;
+}
+
 .add-btn {
-  width: 60px;
-  height: 60px;
+  width: 64px; /* Increased for better mobile touch target */
+  height: 64px; /* Increased for better mobile touch target */
   border-radius: 50%;
   border: none;
-  background-color: #007aff;
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
   color: white;
   font-size: 2rem;
   font-weight: 300;
@@ -126,28 +182,488 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px rgba(129, 216, 208, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .add-btn:hover {
-  background-color: #0056cc;
+  background: linear-gradient(180deg, #6BC5BD 0%, #55B2AA 100%);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 20px rgba(129, 216, 208, 0.4),
+    0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .add-btn:active {
-  transform: scale(0.95);
+  transform: translateY(0);
+  box-shadow: 
+    0 2px 8px rgba(129, 216, 208, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-@media (max-width: 768px) {
-  .welcome-text {
-    font-size: 2rem;
+.sync-btn {
+  background: linear-gradient(180deg, #2C2C2E 0%, #1C1C1E 100%);
+  color: white;
+  border: none;
+  padding: 12px 20px; /* Increased for better mobile touch target */
+  border-radius: 8px;
+  font-size: 0.9rem; /* Slightly larger for mobile readability */
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 1px 3px rgba(44, 44, 46, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+  letter-spacing: -0.01em;
+  min-width: 80px; /* Increased minimum width */
+}
+
+.sync-btn:hover {
+  background: linear-gradient(180deg, #1C1C1E 0%, #0A0A0B 100%);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(44, 44, 46, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.sync-btn:active {
+  transform: translateY(0);
+  box-shadow: 
+    0 1px 2px rgba(44, 44, 46, 0.6),
+    0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.sync-btn.syncing {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ready-text {
+  font-size: 1.1rem;
+  color: #6e6e73;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.start-btn {
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
+  color: white;
+  border: none;
+  padding: 18px 40px;
+  border-radius: 12px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+  max-width: 300px;
+  box-shadow: 
+    0 4px 12px rgba(129, 216, 208, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+  letter-spacing: -0.01em;
+}
+
+.start-btn:hover {
+  background: linear-gradient(180deg, #6BC5BD 0%, #55B2AA 100%);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 6px 20px rgba(129, 216, 208, 0.4),
+    0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.start-btn:active {
+  transform: scale(0.98);
+}
+
+.session-controls {
+  margin-top: 30px;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.end-workout-btn {
+  background-color: #ff3b30;
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  width: 100%;
+  max-width: 300px;
+}
+
+.end-workout-btn:hover {
+  background-color: #d70015;
+}
+
+.history-btn {
+  background-color: #6e6e73;
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  width: 100%;
+  max-width: 300px;
+}
+
+.history-btn:hover {
+  background-color: #515154;
+}
+
+.new-goal-header {
+  display: flex;
+  justify-content: center;
+  margin-top: 40px;
+  width: 100%;
+}
+
+.new-goal-btn {
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 1px 3px rgba(129, 216, 208, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+  letter-spacing: -0.01em;
+  min-width: 140px;
+}
+
+.new-goal-btn:hover {
+  background: linear-gradient(180deg, #6BC5BD 0%, #55B2AA 100%);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(129, 216, 208, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.new-goal-btn:active {
+  transform: translateY(0);
+  box-shadow: 
+    0 1px 2px rgba(129, 216, 208, 0.6),
+    0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/* Testing Controls */
+.testing-controls {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  z-index: 10;
+}
+
+
+.testing-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.testing-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #2C2C2E;
+}
+
+.toggle-container {
+  display: flex;
+  background-color: #f5f5f7;
+  border-radius: 8px;
+  padding: 2px;
+  border: 1px solid #e5e5ea;
+}
+
+.toggle-option {
+  background: transparent;
+  color: #6e6e73;
+  border: none;
+  padding: 8px 16px; /* Increased for better mobile touch */
+  border-radius: 6px;
+  font-size: 0.85rem; /* Slightly larger for mobile */
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 40px; /* Increased minimum width */
+}
+
+.toggle-option.active {
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
+  color: white;
+  box-shadow: 0 1px 3px rgba(129, 216, 208, 0.5);
+}
+
+.toggle-option:hover:not(.active) {
+  background-color: #e5e5ea;
+  color: #1d1d1f;
+}
+
+.delete-test-btn {
+  background: linear-gradient(180deg, #ff3b30 0%, #d70015 100%);
+  color: white;
+  border: none;
+  padding: 8px 16px; /* Increased for better mobile touch */
+  border-radius: 8px;
+  font-size: 0.85rem; /* Slightly larger for mobile */
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 1px 3px rgba(255, 59, 48, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+  letter-spacing: -0.01em;
+}
+
+.delete-test-btn:hover {
+  background: linear-gradient(180deg, #d70015 0%, #b50012 100%);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(255, 59, 48, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h3 {
+  margin: 0 0 16px 0;
+  color: #1d1d1f;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.modal-content p {
+  margin: 0 0 24px 0;
+  color: #6e6e73;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.cancel-btn, .confirm-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+  min-width: 100px;
+  letter-spacing: -0.01em;
+}
+
+.cancel-btn {
+  background: linear-gradient(180deg, #f5f5f7 0%, #e5e5ea 100%);
+  color: #1d1d1f;
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.cancel-btn:hover {
+  background: linear-gradient(180deg, #e5e5ea 0%, #d2d2d7 100%);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.confirm-btn {
+  background: linear-gradient(180deg, #ff3b30 0%, #d70015 100%);
+  color: white;
+  box-shadow: 
+    0 1px 3px rgba(255, 59, 48, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.confirm-btn:hover {
+  background: linear-gradient(180deg, #d70015 0%, #b50012 100%);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(255, 59, 48, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Mobile viewport constraints */
+@media (max-width: 767px) {
+  * {
+    box-sizing: border-box;
   }
   
-  .main-number {
-    font-size: 6rem;
+  body {
+    overflow-x: hidden;
+  }
+  
+  .workout-container {
+    padding: 80px 10px 20px 10px; /* Even less padding on small screens */
   }
   
   .goal-input {
+    font-size: 2rem; /* Slightly smaller on very small screens */
+  }
+  
+  .main-number {
+    font-size: 3rem; /* Smaller main number for mobile */
+  }
+}
+
+/* Tablet and larger screens */
+@media (min-width: 768px) {
+  .workout-container {
+    padding: 100px 40px 40px 40px; /* Top padding for testing controls */
+    max-width: 600px;
+  }
+  
+  .welcome-text {
     font-size: 2.5rem;
-    width: 150px;
+    margin-bottom: 60px;
+  }
+  
+  .goal-input-container {
+    flex-direction: row;
+    gap: 20px;
+  }
+  
+  .goal-input {
+    font-size: 3rem;
+    width: 200px;
+  }
+  
+  .main-number {
+    font-size: 8rem;
+  }
+  
+  .remaining-label {
+    font-size: 1.5rem;
+  }
+  
+  .progress-sync-container {
+    gap: 25px;
+    margin-bottom: 60px;
+  }
+  
+  .goal-progress {
+    font-size: 1.6rem;
+  }
+  
+  .sync-btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    min-width: 80px;
+  }
+  
+  .achievement-text {
+    font-size: 1.1rem;
+  }
+  
+  .session-controls {
+    margin-top: 40px;
+  }
+  
+  .ready-text {
+    font-size: 1.3rem;
+    margin-bottom: 40px;
+  }
+  
+  .start-btn {
+    font-size: 1.3rem;
+    padding: 16px 32px;
+    width: auto;
+  }
+  
+  .set-goal-btn {
+    padding: 12px 24px;
+    width: auto;
+  }
+  
+  .end-workout-btn,
+  .history-btn {
+    padding: 12px 24px;
+    width: auto;
+  }
+  
+  .new-goal-header {
+    margin-top: 50px;
+  }
+  
+  .new-goal-btn {
+    padding: 16px 32px;
+    font-size: 1.1rem;
+    min-width: 160px;
+  }
+  
+  .testing-controls {
+    top: 30px;
+    left: 30px;
+    gap: 20px;
+  }
+  
+  .testing-label {
+    font-size: 1rem;
+  }
+  
+  .toggle-option {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    min-width: 40px;
+  }
+  
+  .delete-test-btn {
+    padding: 8px 16px;
+    font-size: 0.9rem;
   }
 }

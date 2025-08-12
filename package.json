@@ -7,7 +7,12 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "functions": "netlify functions:serve",
+    "dev": "netlify dev",
+    "db:clean": "node database-scripts/clean-database.js",
+    "db:import": "node database-scripts/import-historical-data.js",
+    "db:reset": "npm run db:clean && npm run db:import"
   },
   "repository": {
     "type": "git",
@@ -42,5 +47,9 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "nodemon": "^3.1.10"
   }
 }
