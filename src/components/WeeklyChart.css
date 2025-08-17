@@ -1,6 +1,6 @@
 .weekly-chart {
   width: 100%;
-  padding: 30px 0;
+  padding: 30px 0 50px 0; /* Add bottom padding for labels */
   border-top: 1px solid #e5e5ea;
   margin-top: 40px;
   overflow-x: hidden; /* Prevent chart from causing horizontal scroll */
@@ -60,6 +60,12 @@
   right: 0;
 }
 
+.nav-arrow.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .chart-wrapper {
   display: flex;
   align-items: end;
@@ -81,6 +87,7 @@
   left: 0;
   background: white;
   z-index: 2;
+  align-items: flex-end; /* Align ticks to the right */
 }
 
 .y-axis-tick {
@@ -207,17 +214,31 @@
   
   .bars-container {
     min-width: 320px; /* Smaller minimum width for mobile */
-    padding: 15px 0;
+    padding: 15px 0 0 0; /* Remove bottom padding to ensure labels show */
     height: 180px; /* Slightly smaller height */
   }
   
   .y-axis {
     height: 140px; /* Match bars container height */
     margin-bottom: 35px;
+    align-items: flex-end; /* Ensure alignment on mobile too */
   }
   
   .bar-item {
-    min-width: 40px; /* Smaller bar width on mobile */
+    min-width: 42px; /* Ensure enough space for labels */
+  }
+  
+  .bar-labels {
+    min-height: 40px; /* Ensure labels have enough space */
+  }
+  
+  .bar-label-day {
+    font-size: 0.8rem; /* Ensure readable on mobile */
+    font-weight: 600;
+  }
+  
+  .bar-label-date {
+    font-size: 0.75rem; /* Ensure readable on mobile */
   }
   
   .chart-navigation {

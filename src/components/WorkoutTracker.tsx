@@ -37,6 +37,7 @@ const WorkoutTracker: React.FC = () => {
   const [hasTestData, setHasTestData] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [lastSyncPoint, setLastSyncPoint] = useState(0);
+  const [chartKey, setChartKey] = useState(0);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -81,6 +82,9 @@ const WorkoutTracker: React.FC = () => {
       
       // Refresh current session in case it was a test session
       await fetchCurrentSession();
+      
+      // Force chart refresh by changing its key
+      setChartKey(prev => prev + 1);
     } catch (error) {
       console.error('Failed to delete test data:', error);
     }
@@ -191,6 +195,9 @@ const WorkoutTracker: React.FC = () => {
             setIsWorkoutComplete(true);
             await checkForTestData();
             
+            // Force chart refresh to show new data
+            setChartKey(prev => prev + 1);
+            
           } catch (error) {
             console.error('Failed to complete workout:', error);
           }
@@ -252,6 +259,9 @@ const WorkoutTracker: React.FC = () => {
       
       // Refresh test data status after session ends
       await checkForTestData();
+      
+      // Force chart refresh to show new data
+      setChartKey(prev => prev + 1);
     } catch (error) {
       console.error('Failed to end workout:', error);
     }
@@ -342,11 +352,6 @@ const WorkoutTracker: React.FC = () => {
     return (
       <div className="workout-container">
         <TestingControls />
-        <div className="new-goal-header">
-          <button className="new-goal-btn" onClick={startNewGoal}>
-            New Goal
-          </button>
-        </div>
         
         <div className="progress-display">
           <div className="remaining-label">
@@ -366,7 +371,13 @@ const WorkoutTracker: React.FC = () => {
           </div>
         </div>
         
-        <WeeklyChart />
+        <div className="new-goal-header">
+          <button className="new-goal-btn" onClick={startNewGoal}>
+            Set New Goal
+          </button>
+        </div>
+        
+        <WeeklyChart key={chartKey} />
         <DeleteConfirmModal />
       </div>
     );
@@ -396,7 +407,7 @@ const WorkoutTracker: React.FC = () => {
               </button>
             </div>
           </div>
-          <WeeklyChart />
+          <WeeklyChart key={chartKey} />
           <DeleteConfirmModal />
         </div>
       );
@@ -412,7 +423,7 @@ const WorkoutTracker: React.FC = () => {
               Start Training
             </button>
           </div>
-          <WeeklyChart />
+          <WeeklyChart key={chartKey} />
           <DeleteConfirmModal />
         </div>
       );
@@ -480,7 +491,7 @@ const WorkoutTracker: React.FC = () => {
         </div>
       </div>
       
-      <WeeklyChart />
+      <WeeklyChart key={chartKey} />
       <DeleteConfirmModal />
     </div>
   );

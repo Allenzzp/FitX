@@ -164,13 +164,19 @@ const WeeklyChart: React.FC = () => {
     <div className="weekly-chart">
       <div className="chart-header">
         {hasOlderData && (
-          <button className="nav-arrow left" onClick={() => navigateWeek('prev')}>
+          <button 
+            className="nav-arrow left" 
+            onClick={() => navigateWeek('prev')}
+          >
             ←
           </button>
         )}
         <h3 className="chart-title">Weekly Progress</h3>
         {hasNewerData && (
-          <button className="nav-arrow right" onClick={() => navigateWeek('next')}>
+          <button 
+            className="nav-arrow right" 
+            onClick={() => navigateWeek('next')}
+          >
             →
           </button>
         )}
