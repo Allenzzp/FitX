@@ -50,34 +50,30 @@ const WeeklyChart: React.FC = () => {
 
   const checkNavigationAvailability = async () => {
     try {
-      // Check if there's any historical data by going back further
-      let hasAnyHistoricalData = false;
-      let hasDataBeforeCurrentView = false;
+      // Right arrow: Show immediately if not at current week (weekOffset < 0)
+      const hasNewerDataValue = weekOffset < 0;
+      setHasNewerData(hasNewerDataValue);
       
-      for (let i = 1; i <= 10; i++) { // Check up to 10 weeks back
-        const checkWeekResponse = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${weekOffset - i}`);
-        if (checkWeekResponse.data.length > 0) {
-          hasDataBeforeCurrentView = true;
-        }
-        
-        // Also check from current week to find any historical data at all
+      // Left arrow: Check if there's data in the previous week only
+      const prevWeekResponse = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${weekOffset - 1}`);
+      const hasDataBeforeCurrentView = prevWeekResponse.data.length > 0;
+      setHasOlderData(hasDataBeforeCurrentView);
+      
+      // Historical data check: Only check current week backwards to week -10 for historical indicator
+      let hasAnyHistoricalData = false;
+      for (let i = 1; i <= 10; i++) {
         const checkHistoricalResponse = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${-i}`);
         if (checkHistoricalResponse.data.length > 0) {
           hasAnyHistoricalData = true;
+          break; // Stop at first found historical data
         }
-        
-        if (hasDataBeforeCurrentView && hasAnyHistoricalData) break;
       }
-      
-      setHasOlderData(hasDataBeforeCurrentView);
       setHasHistoricalData(hasAnyHistoricalData);
       
-      // Right arrow: Show if not at current week (weekOffset < 0)
-      setHasNewerData(weekOffset < 0);
     } catch (error) {
       console.error('Failed to check navigation availability:', error);
       setHasOlderData(false);
-      setHasNewerData(false);
+      setHasNewerData(weekOffset < 0); // Keep right arrow logic even on error
       setHasHistoricalData(false);
     }
   };

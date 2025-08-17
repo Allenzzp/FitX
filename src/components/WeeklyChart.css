@@ -240,16 +240,45 @@
   .bar-label-date {
     font-size: 0.75rem; /* Ensure readable on mobile */
   }
-  
-  .chart-navigation {
-    gap: 8px;
-    margin-top: 15px;
+}
+
+/* iPhone Safari/Chrome specific fixes */
+@supports (-webkit-touch-callout: none) {
+  .bar-labels {
+    -webkit-transform: translateZ(0); /* Force hardware acceleration */
+    transform: translateZ(0);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    position: relative;
+    z-index: 1;
   }
   
-  .nav-btn {
-    padding: 10px 16px;
-    font-size: 0.85rem;
-    min-width: 100px;
+  .bar-label-day,
+  .bar-label-date {
+    -webkit-transform: translateZ(0); /* Force hardware acceleration */
+    transform: translateZ(0);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    backface-visibility: hidden;
+    position: relative;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+}
+
+/* Additional iOS Safari specific fixes */
+@media screen and (-webkit-min-device-pixel-ratio: 2) {
+  .bar-label-day {
+    font-size: 0.85rem !important;
+    line-height: 1.2 !important;
+    min-height: 16px !important;
+  }
+  
+  .bar-label-date {
+    font-size: 0.8rem !important;
+    line-height: 1.1 !important;
+    min-height: 14px !important;
   }
 }
 
