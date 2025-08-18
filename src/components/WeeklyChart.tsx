@@ -79,7 +79,7 @@ const WeeklyChart: React.FC = () => {
   };
 
   const navigateWeek = (direction: 'prev' | 'next') => {
-    if (direction === 'prev' && hasOlderData) {
+    if (direction === 'prev') {
       setWeekOffset(weekOffset - 1);
     } else if (direction === 'next' && hasNewerData) {
       setWeekOffset(weekOffset + 1);
@@ -159,7 +159,7 @@ const WeeklyChart: React.FC = () => {
   return (
     <div className="weekly-chart">
       <div className="chart-header">
-        {hasOlderData && (
+        {(hasOlderData || weekOffset === 0) && (
           <button 
             className="nav-arrow left" 
             onClick={() => navigateWeek('prev')}
@@ -205,14 +205,15 @@ const WeeklyChart: React.FC = () => {
                 <div key={index} className="bar-item">
                   <div className="bar-container">
                     {jumps > 0 && (
-                      <div className="bar-value-top">
-                        {jumps.toLocaleString()}
+                      <div 
+                        className="bar"
+                        style={{ height: `${height}%` }}
+                      >
+                        <div className="bar-value-top">
+                          {jumps.toLocaleString()}
+                        </div>
                       </div>
                     )}
-                    <div 
-                      className="bar"
-                      style={{ height: `${height}%` }}
-                    />
                   </div>
                   <div className="bar-labels">
                     <div className="bar-label-day">{dayLabels[index]}</div>

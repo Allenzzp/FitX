@@ -1,9 +1,9 @@
+/* Weekly Chart - Mobile First Design */
 .weekly-chart {
   width: 100%;
-  padding: 30px 0 50px 0; /* Add bottom padding for labels */
+  padding: 1.25rem 0.5rem 2rem 0.5rem;
   border-top: 1px solid #e5e5ea;
-  margin-top: 40px;
-  overflow-x: hidden; /* Prevent chart from causing horizontal scroll */
+  margin-top: 2rem;
   box-sizing: border-box;
 }
 
@@ -12,11 +12,11 @@
   align-items: center;
   justify-content: center;
   position: relative;
-  margin-bottom: 30px;
+  margin-bottom: 1.5rem;
 }
 
 .chart-title {
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: #2C2C2E;
   text-align: center;
@@ -28,13 +28,13 @@
   background: linear-gradient(180deg, #f5f5f7 0%, #e5e5ea 100%);
   color: #2C2C2E;
   border: none;
-  width: 40px; /* Increased for better mobile touch */
-  height: 40px; /* Increased for better mobile touch */
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem; /* Increased for mobile visibility */
+  font-size: 1.1rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -66,228 +66,195 @@
   pointer-events: none;
 }
 
+/* Chart wrapper with proper grid layout */
 .chart-wrapper {
-  display: flex;
-  align-items: end;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0;
   width: 100%;
-  overflow-x: hidden;
-  box-sizing: border-box;
+  min-height: 12rem;
+  position: relative;
 }
 
+/* Y-axis with proper spacing */
 .y-axis {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 160px;
-  padding: 0;
-  margin-bottom: 40px;
-  flex-shrink: 0; /* Prevent y-axis from shrinking */
-  position: sticky;
-  left: 0;
-  background: white;
-  z-index: 2;
-  align-items: flex-end; /* Align ticks to the right */
+  height: 10rem;
+  padding: 0 0.5rem 0 0;
+  margin: 0;
+  position: relative;
+  width: 3rem;
+}
+
+.y-axis::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #000;
+  z-index: 1;
 }
 
 .y-axis-tick {
   display: flex;
   align-items: center;
   height: 0;
+  width: 100%;
+  justify-content: flex-end;
+  position: relative;
 }
 
 .y-axis-label {
-  font-size: 0.8rem; /* Increased for mobile readability */
+  font-size: 0.7rem;
   color: #6e6e73;
   font-weight: 500;
   text-align: right;
-  min-width: 35px;
-}
-
-.chart-container {
-  flex: 1;
+  white-space: nowrap;
+  background: white;
+  padding-right: 0.25rem;
   position: relative;
-  overflow-x: auto; /* Allow horizontal scrolling for bars */
-  overflow-y: hidden;
-  min-width: 0; /* Allow container to shrink */
+  z-index: 2;
 }
 
+/* Chart container with axis lines */
+.chart-container {
+  position: relative;
+  height: 10rem;
+  margin-bottom: 3rem;
+}
+
+.chart-container::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #000;
+  z-index: 1;
+}
+
+/* Bars container positioned above the X-axis */
 .bars-container {
   display: flex;
-  align-items: end;
-  height: 200px;
-  padding: 20px 0;
-  gap: 8px;
-  min-width: 350px; /* Minimum width to ensure bars have space */
-  width: max-content; /* Allow container to expand based on content */
+  align-items: flex-end;
+  justify-content: flex-start;
+  height: calc(10rem - 2px);
+  gap: 0.5rem;
+  padding: 0 0.5rem 2px 0;
+  margin: 0;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 2;
 }
 
+/* Individual bar items */
 .bar-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  height: 100%;
-  min-width: 45px; /* Fixed width for each bar item */
-  flex-shrink: 0; /* Prevent shrinking */
+  justify-content: flex-end;
+  flex: 1;
+  max-width: 4rem;
+  min-width: 2.5rem;
+  position: relative;
 }
 
 .bar-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: end;
-  height: 160px;
+  justify-content: flex-end;
+  height: calc(10rem - 2px);
   width: 100%;
   position: relative;
 }
 
 .bar-value-top {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 600;
   color: #2C2C2E;
-  margin-bottom: 10px;
   text-align: center;
   white-space: nowrap;
+  position: absolute;
+  top: -1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 0 0.25rem;
 }
 
 .bar {
-  width: 100%;
-  max-width: 40px;
+  width: 80%;
+  max-width: 2rem;
   background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
-  border-radius: 4px 4px 0 0;
+  border-radius: 0.25rem 0.25rem 0 0;
   transition: all 0.3s ease;
-  min-height: 0;
+  position: relative;
 }
 
+.bar .bar-value-top {
+  position: absolute;
+  top: -1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #2C2C2E;
+  text-align: center;
+  white-space: nowrap;
+  background: white;
+  padding: 0 0.25rem;
+}
+
+/* Labels positioned below the X-axis line */
 .bar-labels {
+  position: absolute;
+  bottom: -3rem;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 8px;
-  gap: 2px;
-  min-height: 32px;
-  justify-content: flex-start;
+  gap: 0.125rem;
+  min-height: 2.5rem;
+  width: 100%;
 }
 
 .bar-label-day {
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   color: #2C2C2E;
   text-align: center;
+  line-height: 1.2;
 }
 
 .bar-label-date {
-  font-size: 0.8rem; /* Increased for mobile readability */
+  font-size: 0.7rem;
   font-weight: 400;
   color: #6e6e73;
   text-align: center;
+  line-height: 1.1;
 }
 
 .loading {
   text-align: center;
   color: #6e6e73;
   font-size: 1rem;
-  padding: 40px;
+  padding: 2.5rem;
 }
 
-/* Mobile-specific chart optimizations */
-@media (max-width: 767px) {
-  .weekly-chart {
-    padding: 20px 0;
-    margin-top: 30px;
-  }
-  
-  .chart-title {
-    font-size: 1.2rem;
-    margin: 0;
-  }
-  
-  .chart-header {
-    margin-bottom: 20px;
-  }
-  
-  .nav-arrow {
-    width: 36px;
-    height: 36px;
-    font-size: 1.2rem;
-  }
-  
-  .bars-container {
-    min-width: 320px; /* Smaller minimum width for mobile */
-    padding: 15px 0 0 0; /* Remove bottom padding to ensure labels show */
-    height: 180px; /* Slightly smaller height */
-  }
-  
-  .y-axis {
-    height: 140px; /* Match bars container height */
-    margin-bottom: 35px;
-    align-items: flex-end; /* Ensure alignment on mobile too */
-  }
-  
-  .bar-item {
-    min-width: 42px; /* Ensure enough space for labels */
-  }
-  
-  .bar-labels {
-    min-height: 40px; /* Ensure labels have enough space */
-  }
-  
-  .bar-label-day {
-    font-size: 0.8rem; /* Ensure readable on mobile */
-    font-weight: 600;
-  }
-  
-  .bar-label-date {
-    font-size: 0.75rem; /* Ensure readable on mobile */
-  }
-}
-
-/* iPhone Safari/Chrome specific fixes */
-@supports (-webkit-touch-callout: none) {
-  .bar-labels {
-    -webkit-transform: translateZ(0); /* Force hardware acceleration */
-    transform: translateZ(0);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    position: relative;
-    z-index: 1;
-  }
-  
-  .bar-label-day,
-  .bar-label-date {
-    -webkit-transform: translateZ(0); /* Force hardware acceleration */
-    transform: translateZ(0);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    backface-visibility: hidden;
-    position: relative;
-    display: block !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-  }
-}
-
-/* Additional iOS Safari specific fixes */
-@media screen and (-webkit-min-device-pixel-ratio: 2) {
-  .bar-label-day {
-    font-size: 0.85rem !important;
-    line-height: 1.2 !important;
-    min-height: 16px !important;
-  }
-  
-  .bar-label-date {
-    font-size: 0.8rem !important;
-    line-height: 1.1 !important;
-    min-height: 14px !important;
-  }
-}
-
+/* Navigation buttons */
 .chart-navigation {
   display: flex;
   justify-content: center;
-  gap: 12px;
-  margin-top: 20px;
-  flex-wrap: wrap; /* Allow buttons to wrap on very small screens */
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
   max-width: 100%;
 }
 
@@ -295,9 +262,9 @@
   background: linear-gradient(180deg, #f5f5f7 0%, #e5e5ea 100%);
   color: #2C2C2E;
   border: none;
-  padding: 12px 20px; /* Increased for better mobile touch */
-  border-radius: 8px;
-  font-size: 0.9rem; /* Slightly larger for mobile */
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -305,7 +272,8 @@
     0 1px 3px rgba(0, 0, 0, 0.1),
     0 1px 2px rgba(0, 0, 0, 0.1);
   letter-spacing: -0.01em;
-  min-width: 110px; /* Increased minimum width */
+  min-width: 7rem;
+  white-space: nowrap;
 }
 
 .nav-btn:hover {
@@ -338,85 +306,98 @@
     0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* Tablet and larger screens */
+/* Desktop enhancements */
 @media (min-width: 768px) {
   .weekly-chart {
-    padding: 40px 0;
-    margin-top: 50px;
+    padding: 2.5rem 1rem;
+    margin-top: 3rem;
   }
   
   .chart-header {
-    margin-bottom: 40px;
+    margin-bottom: 2.5rem;
   }
   
   .chart-title {
-    font-size: 1.5rem;
+    font-size: 1.4rem;
   }
   
   .nav-arrow {
-    width: 36px;
-    height: 36px;
-    font-size: 1.3rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.25rem;
   }
   
   .chart-wrapper {
-    gap: 15px;
+    min-height: 16rem;
   }
   
   .y-axis {
-    height: 190px;
-    padding: 0;
-    margin-bottom: 50px;
+    height: 14rem;
+    width: 4rem;
+    padding-right: 1rem;
+  }
+  
+  .y-axis::after {
+    bottom: 0;
   }
   
   .y-axis-label {
     font-size: 0.8rem;
-    min-width: 40px;
+  }
+  
+  .chart-container {
+    height: 14rem;
+    margin-bottom: 4rem;
+  }
+  
+  .chart-container::after {
+    bottom: 2px;
   }
   
   .bars-container {
-    height: 250px;
-    padding: 30px 0;
-    gap: 12px;
+    height: calc(14rem - 2px);
+    gap: 0.75rem;
+    padding: 0 1rem 2px 0;
   }
   
   .bar-item {
-    min-width: 60px;
+    max-width: 5rem;
+    min-width: 3rem;
   }
   
   .bar-container {
-    height: 190px;
+    height: calc(14rem - 2px);
   }
   
   .bar {
-    max-width: 50px;
+    max-width: 2.5rem;
   }
   
-  .bar-value-top {
+  .bar .bar-value-top {
     font-size: 0.75rem;
-    margin-bottom: 12px;
-  }
-  
-  .bar-label-day {
-    font-size: 0.9rem;
+    top: -1.5rem;
   }
   
   .bar-labels {
-    min-height: 36px;
+    bottom: -4rem;
+  }
+  
+  .bar-label-day {
+    font-size: 0.85rem;
   }
   
   .bar-label-date {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
   }
   
   .chart-navigation {
-    gap: 15px;
-    margin-top: 25px;
+    gap: 1rem;
+    margin-top: 2rem;
   }
   
   .nav-btn {
-    padding: 10px 20px;
+    padding: 0.75rem 1.5rem;
     font-size: 0.9rem;
-    min-width: 120px;
+    min-width: 8rem;
   }
 }
