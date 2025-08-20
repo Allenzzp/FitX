@@ -17,7 +17,7 @@ const WeeklyChart: React.FC = () => {
   const [hasNewerData, setHasNewerData] = useState(false);
   const [hasHistoricalData, setHasHistoricalData] = useState(false);
 
-  const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
+  const API_BASE = '/.netlify/functions';
 
   useEffect(() => {
     fetchWeeklyData();

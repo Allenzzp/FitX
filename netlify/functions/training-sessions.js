@@ -6,6 +6,18 @@ const getCurrentTime = () => {
   return new Date();
 };
 
+// Helper function to calculate actual workout duration from training segments
+const calculateActualWorkoutDuration = (segments) => {
+  if (!segments || segments.length === 0) return 0;
+  
+  return segments.reduce((total, segment) => {
+    if (segment.start && segment.end) {
+      return total + (new Date(segment.end) - new Date(segment.start));
+    }
+    return total;
+  }, 0);
+};
+
 exports.handler = async (event, context) => {
   const { httpMethod, body, queryStringParameters } = event;
   
@@ -29,9 +41,9 @@ exports.handler = async (event, context) => {
           };
         }
         
-        // Get current active session
-        const activeSession = await collection.findOne({ 
-          isActive: true 
+        // Get current non-ended session (active or paused)
+        const currentSession = await collection.findOne({ 
+          status: { $ne: "ended" } 
         });
         
         return {
@@ -40,16 +52,16 @@ exports.handler = async (event, context) => {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           },
-          body: JSON.stringify(activeSession)
+          body: JSON.stringify(currentSession)
         };
         
       case 'POST':
         // Create new training session
         const sessionData = JSON.parse(body);
         
-        // Check if there's already an active session
-        const existingActive = await collection.findOne({ isActive: true });
-        if (existingActive) {
+        // Check if there's already a non-ended session
+        const existingSession = await collection.findOne({ status: { $ne: "ended" } });
+        if (existingSession) {
           return {
             statusCode: 400,
             headers: {
@@ -57,20 +69,25 @@ exports.handler = async (event, context) => {
               'Access-Control-Allow-Origin': '*'
             },
             body: JSON.stringify({ 
-              error: 'An active session already exists. End current session first.' 
+              error: 'A session already exists. End current session first.' 
             })
           };
         }
         
+        const now = sessionData.startTime ? new Date(sessionData.startTime) : getCurrentTime();
         const newSession = {
           goal: sessionData.goal,
           completed: 0,
-          startTime: sessionData.startTime ? new Date(sessionData.startTime) : getCurrentTime(),
+          startTime: now,
           endTime: null,
-          isActive: true,
-          isPaused: false,
+          status: "active",
           pausedAt: null,
-          totalPausedDuration: 0,
+          lastActivityAt: now,
+          actualWorkoutDuration: 0,
+          trainingSegments: [{
+            start: now,
+            end: null
+          }],
           testing: sessionData.testing || false,
           createdAt: sessionData.createdAt ? new Date(sessionData.createdAt) : getCurrentTime()
         };
@@ -125,34 +142,89 @@ exports.handler = async (event, context) => {
         // Handle different update types
         if (updateData.action === 'updateProgress') {
           updateFields.completed = updateData.completed;
+          updateFields.lastActivityAt = getCurrentTime();
         } else if (updateData.action === 'pause') {
-          updateFields.isPaused = true;
-          updateFields.pausedAt = updateData.pausedAt ? new Date(updateData.pausedAt) : getCurrentTime();
-        } else if (updateData.action === 'resume') {
+          const now = updateData.pausedAt ? new Date(updateData.pausedAt) : getCurrentTime();
+          updateFields.status = "paused";
+          updateFields.pausedAt = now;
+          // End current training segment
           const session = await collection.findOne({ _id: objectId });
-          if (session && session.pausedAt) {
-            const pauseDuration = getCurrentTime() - new Date(session.pausedAt);
-            updateFields.isPaused = false;
-            updateFields.pausedAt = null;
-            updateFields.totalPausedDuration = (session.totalPausedDuration || 0) + pauseDuration;
+          if (session && session.trainingSegments && session.trainingSegments.length > 0) {
+            const lastSegmentIndex = session.trainingSegments.length - 1;
+            if (!session.trainingSegments[lastSegmentIndex].end) {
+              updateFields[`trainingSegments.${lastSegmentIndex}.end`] = now;
+            }
+          }
+        } else if (updateData.action === 'resume') {
+          const now = getCurrentTime();
+          updateFields.status = "active";
+          updateFields.pausedAt = null;
+          updateFields.lastActivityAt = now;
+          // Start new training segment
+          updateFields.$push = { trainingSegments: { start: now, end: null } };
+        } else if (updateData.action === 'autoPause') {
+          const now = getCurrentTime();
+          updateFields.status = "paused";
+          updateFields.pausedAt = now;
+          // End current training segment
+          const session = await collection.findOne({ _id: objectId });
+          if (session && session.trainingSegments && session.trainingSegments.length > 0) {
+            const lastSegmentIndex = session.trainingSegments.length - 1;
+            if (!session.trainingSegments[lastSegmentIndex].end) {
+              updateFields[`trainingSegments.${lastSegmentIndex}.end`] = now;
+            }
           }
         } else if (updateData.action === 'finalSync') {
           // Final sync: update progress AND end session in one operation
+          const now = updateData.endTime ? new Date(updateData.endTime) : getCurrentTime();
           updateFields.completed = updateData.completed;
-          updateFields.isActive = false;
-          updateFields.endTime = updateData.endTime ? new Date(updateData.endTime) : getCurrentTime();
-          updateFields.isPaused = false;
+          updateFields.status = "ended";
+          updateFields.endTime = now;
           updateFields.pausedAt = null;
+          // End current training segment and calculate actual workout duration
+          const session = await collection.findOne({ _id: objectId });
+          if (session && session.trainingSegments && session.trainingSegments.length > 0) {
+            const lastSegmentIndex = session.trainingSegments.length - 1;
+            if (!session.trainingSegments[lastSegmentIndex].end) {
+              updateFields[`trainingSegments.${lastSegmentIndex}.end`] = now;
+              // Calculate actual workout duration with the final segment
+              const updatedSegments = [...session.trainingSegments];
+              updatedSegments[lastSegmentIndex].end = now;
+              updateFields.actualWorkoutDuration = calculateActualWorkoutDuration(updatedSegments);
+            } else {
+              updateFields.actualWorkoutDuration = calculateActualWorkoutDuration(session.trainingSegments);
+            }
+          }
         } else if (updateData.action === 'end') {
-          updateFields.isActive = false;
-          updateFields.endTime = updateData.endTime ? new Date(updateData.endTime) : getCurrentTime();
-          updateFields.isPaused = false;
+          const now = updateData.endTime ? new Date(updateData.endTime) : getCurrentTime();
+          updateFields.status = "ended";
+          updateFields.endTime = now;
           updateFields.pausedAt = null;
+          // End current training segment and calculate actual workout duration
+          const session = await collection.findOne({ _id: objectId });
+          if (session && session.trainingSegments && session.trainingSegments.length > 0) {
+            const lastSegmentIndex = session.trainingSegments.length - 1;
+            if (!session.trainingSegments[lastSegmentIndex].end) {
+              updateFields[`trainingSegments.${lastSegmentIndex}.end`] = now;
+              // Calculate actual workout duration with the final segment
+              const updatedSegments = [...session.trainingSegments];
+              updatedSegments[lastSegmentIndex].end = now;
+              updateFields.actualWorkoutDuration = calculateActualWorkoutDuration(updatedSegments);
+            } else {
+              updateFields.actualWorkoutDuration = calculateActualWorkoutDuration(session.trainingSegments);
+            }
+          }
+        }
+        
+        let updateOperation = { $set: updateFields };
+        if (updateFields.$push) {
+          updateOperation.$push = updateFields.$push;
+          delete updateFields.$push;
         }
         
         const updateResult = await collection.updateOne(
           { _id: objectId },
-          { $set: updateFields }
+          updateOperation
         );
         
         if (updateResult.matchedCount === 0) {

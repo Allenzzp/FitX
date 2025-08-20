@@ -12,15 +12,21 @@ Individual workout sessions with real-time progress tracking.
   goal: Number,                     // Target jump count
   completed: Number,                // Current jumps completed  
   startTime: Date,                  // Session start
-  endTime: Date | null,             // Session end (null if active)
-  isActive: Boolean,                // Currently active session
-  isPaused: Boolean,                // Session paused
+  endTime: Date | null,             // Session end (null if not ended)
+  status: String,                   // "active" | "paused" | "ended"
+  pausedAt: Date | null,            // Last pause timestamp
+  lastActivityAt: Date,             // Last rep addition time (for auto-pause)
+  actualWorkoutDuration: Number,    // Total active workout time in milliseconds (calculated from segments)
+  trainingSegments: [{              // Array of training periods
+    start: Date,
+    end: Date | null
+  }],
   testing: Boolean,                 // Test data flag
   createdAt: Date
 }
 ```
 
-**Rules**: Only one active session at a time. Goal ≥ 100.
+**Rules**: Only one non-ended session at a time. Goal ≥ 100. Auto-pause after 10min inactivity.
 
 ### `dailySummaries`
 Daily aggregated totals for weekly charts.

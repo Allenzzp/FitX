@@ -291,13 +291,15 @@
   margin-top: 30px;
   text-align: center;
   display: flex;
+  gap: 15px;
   justify-content: center;
   width: 100%;
+  flex-wrap: wrap;
 }
 
-.end-workout-btn {
-  background-color: #ff3b30;
-  color: white;
+.end-workout-btn,
+.pause-workout-btn,
+.resume-workout-btn {
   border: none;
   padding: 14px 28px;
   border-radius: 10px;
@@ -305,12 +307,34 @@
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  width: 100%;
+  flex: 1;
   max-width: 300px;
+  min-width: 140px;
+  color: white;
+}
+
+.end-workout-btn {
+  background-color: #ff3b30;
 }
 
 .end-workout-btn:hover {
   background-color: #d70015;
+}
+
+.pause-workout-btn {
+  background-color: #ff9500;
+}
+
+.pause-workout-btn:hover {
+  background-color: #e6850e;
+}
+
+.resume-workout-btn {
+  background-color: #34c759;
+}
+
+.resume-workout-btn:hover {
+  background-color: #2db653;
 }
 
 .history-btn {
@@ -631,8 +655,11 @@
   }
   
   .end-workout-btn,
+  .pause-workout-btn,
+  .resume-workout-btn,
   .history-btn {
     padding: 12px 24px;
+    flex: none;
     width: auto;
   }
   

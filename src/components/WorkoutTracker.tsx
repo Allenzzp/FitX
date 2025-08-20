@@ -9,10 +9,14 @@ interface TrainingSession {
   completed: number;
   startTime: string;
   endTime: string | null;
-  isActive: boolean;
-  isPaused: boolean;
+  status: "active" | "paused" | "ended";
   pausedAt: string | null;
-  totalPausedDuration: number;
+  lastActivityAt: string;
+  actualWorkoutDuration: number;
+  trainingSegments: {
+    start: string;
+    end: string | null;
+  }[];
 }
 
 interface DailySummary {
@@ -24,6 +28,7 @@ interface DailySummary {
 
 const WorkoutTracker: React.FC = () => {
   const [currentSession, setCurrentSession] = useState<TrainingSession | null>(null);
+  const [autoPauseTimer, setAutoPauseTimer] = useState<NodeJS.Timeout | null>(null);
   const [goalInput, setGoalInput] = useState('4000');
   const [repInput, setRepInput] = useState('100');
   const [isDefaultRep, setIsDefaultRep] = useState(true);
@@ -43,8 +48,11 @@ const WorkoutTracker: React.FC = () => {
   
 
   useEffect(() => {
-    fetchCurrentSession();
-    checkForTestData();
+    // Run backup cleanup check first, then fetch current session
+    runBackupCleanup().then(() => {
+      fetchCurrentSession();
+      checkForTestData();
+    });
   }, []);
 
   const toggleTestingMode = async () => {
@@ -54,6 +62,32 @@ const WorkoutTracker: React.FC = () => {
     
     // Refresh test data status when toggling mode
     await checkForTestData();
+  };
+
+  const runBackupCleanup = async () => {
+    try {
+      // Only run cleanup once per day and only if there's a non-ended session
+      const lastCleanup = localStorage.getItem('lastCleanupDate');
+      const today = new Date().toDateString();
+      
+      if (lastCleanup !== today) {
+        // First check if there's any non-ended session (more efficient)
+        const response = await axios.get(`${API_BASE}/training-sessions`);
+        
+        if (response.data && response.data.status !== 'ended') {
+          // Only run cleanup if there's actually a non-ended session
+          console.log('Found non-ended session, running backup cleanup...');
+          await axios.get(`${API_BASE}/cleanup-paused-sessions`);
+          console.log('Backup cleanup completed');
+        }
+        
+        // Mark cleanup as done for today regardless of whether cleanup was needed
+        localStorage.setItem('lastCleanupDate', today);
+      }
+    } catch (error) {
+      console.error('Backup cleanup failed:', error);
+      // Don't block app loading if cleanup fails
+    }
   };
 
   const checkForTestData = async () => {
@@ -98,6 +132,10 @@ const WorkoutTracker: React.FC = () => {
         setIsStarted(true);
         // Set sync point based on current progress for existing sessions
         setLastSyncPoint(Math.floor(response.data.completed / 500) * 500);
+        // Start auto-pause timer if session is active
+        if (response.data.status === "active") {
+          startAutoPauseTimer(response.data._id);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch current session:', error);
@@ -125,6 +163,8 @@ const WorkoutTracker: React.FC = () => {
       });
       setCurrentSession(response.data);
       setLastSyncPoint(0); // Reset sync point for new session
+      // Start auto-pause timer for new session
+      startAutoPauseTimer(response.data._id);
     } catch (error) {
       console.error('Failed to start workout:', error);
     }
@@ -146,8 +186,11 @@ const WorkoutTracker: React.FC = () => {
         setIsDefaultRep(true);
         setNeedsSync(true); // Mark as needing sync after progress update
         
+        // Reset auto-pause timer on activity
+        resetAutoPauseTimer(currentSession._id);
+        
         // Auto-sync every 500 reps (but not when goal is reached, as endWorkout will handle that)
-        if (newCompleted >= lastSyncPoint + 500 && newCompleted < currentSession.goal) {
+        if (newCompleted >= lastSyncPoint + 500 && newCompleted < currentSession.goal && currentSession.status === "active") {
           console.log('Auto-sync triggered at', newCompleted, 'reps');
           // Actually perform the sync to database
           try {
@@ -209,7 +252,7 @@ const WorkoutTracker: React.FC = () => {
   };
 
   const manualSync = async () => {
-    if (!currentSession || isSyncing) return;
+    if (!currentSession || isSyncing || currentSession.status !== "active") return;
     
     setIsSyncing(true);
     try {
@@ -223,6 +266,69 @@ const WorkoutTracker: React.FC = () => {
       console.error('Failed to sync data:', error);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const startAutoPauseTimer = (sessionId: string) => {
+    // Clear existing timer
+    if (autoPauseTimer) {
+      clearTimeout(autoPauseTimer);
+    }
+    
+    // Set 10-minute timer for auto-pause
+    const timer = setTimeout(async () => {
+      try {
+        console.log('Auto-pausing session due to inactivity');
+        await axios.put(`${API_BASE}/training-sessions?id=${sessionId}`, {
+          action: 'autoPause'
+        });
+        // Refresh current session to get updated status
+        await fetchCurrentSession();
+      } catch (error) {
+        console.error('Failed to auto-pause session:', error);
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+    
+    setAutoPauseTimer(timer);
+  };
+
+  const resetAutoPauseTimer = (sessionId: string) => {
+    startAutoPauseTimer(sessionId);
+  };
+
+  const clearAutoPauseTimer = () => {
+    if (autoPauseTimer) {
+      clearTimeout(autoPauseTimer);
+      setAutoPauseTimer(null);
+    }
+  };
+
+  const pauseWorkout = async () => {
+    if (!currentSession) return;
+    
+    try {
+      const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+        action: 'pause'
+      });
+      setCurrentSession(response.data);
+      clearAutoPauseTimer(); // Stop auto-pause timer when manually paused
+    } catch (error) {
+      console.error('Failed to pause workout:', error);
+    }
+  };
+
+  const resumeWorkout = async () => {
+    if (!currentSession) return;
+    
+    try {
+      const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+        action: 'resume'
+      });
+      setCurrentSession(response.data);
+      // Start auto-pause timer when resuming
+      startAutoPauseTimer(response.data._id);
+    } catch (error) {
+      console.error('Failed to resume workout:', error);
     }
   };
 
@@ -257,6 +363,9 @@ const WorkoutTracker: React.FC = () => {
       setCurrentSession(null);
       setIsWorkoutComplete(true);
       
+      // Clear auto-pause timer when session ends
+      clearAutoPauseTimer();
+      
       // Refresh test data status after session ends
       await checkForTestData();
       
@@ -272,6 +381,8 @@ const WorkoutTracker: React.FC = () => {
     setCompletedSession(null);
     setIsStarted(false);
     setGoalInput('4000');
+    // Clear any remaining auto-pause timer
+    clearAutoPauseTimer();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -439,7 +550,9 @@ const WorkoutTracker: React.FC = () => {
       <TestingControls />
       <div className="progress-display">
         <div className="remaining-label">
-          {isComplete ? 'Goal Achieved!' : 'Jumps remaining'}
+          {isComplete ? 'Goal Achieved!' : 
+           currentSession.status === "paused" ? 'Session Paused - Jumps remaining' : 
+           'Jumps remaining'}
         </div>
         <div className="main-number">
           {isComplete ? '🎉' : remaining.toLocaleString()}
@@ -448,7 +561,7 @@ const WorkoutTracker: React.FC = () => {
           <div className="goal-progress">
             {currentSession.completed.toLocaleString()} / {currentSession.goal.toLocaleString()}
           </div>
-          {needsSync && (
+          {needsSync && currentSession.status === "active" && (
             <button 
               className={`sync-btn ${isSyncing ? 'syncing' : ''}`} 
               onClick={manualSync}
@@ -478,13 +591,28 @@ const WorkoutTracker: React.FC = () => {
             }}
             onKeyPress={handleKeyPress}
             placeholder="100"
+            disabled={currentSession.status === "paused"}
           />
-          <button className="add-btn" onClick={addReps}>
+          <button 
+            className="add-btn" 
+            onClick={addReps}
+            disabled={currentSession.status === "paused"}
+          >
             +
           </button>
         </div>
         
         <div className="session-controls">
+          {currentSession.status === "active" && (
+            <button className="pause-workout-btn" onClick={pauseWorkout}>
+              Pause Training
+            </button>
+          )}
+          {currentSession.status === "paused" && (
+            <button className="resume-workout-btn" onClick={resumeWorkout}>
+              Resume Training
+            </button>
+          )}
           <button className="end-workout-btn" onClick={endWorkout}>
             End Training
           </button>
