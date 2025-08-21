@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import WeeklyChart from './WeeklyChart';
 import './WorkoutTracker.css';
@@ -27,11 +27,14 @@ interface DailySummary {
 }
 
 const WorkoutTracker: React.FC = () => {
+  const goalInputRef = useRef<HTMLInputElement>(null);
   const [currentSession, setCurrentSession] = useState<TrainingSession | null>(null);
   const [autoPauseTimer, setAutoPauseTimer] = useState<NodeJS.Timeout | null>(null);
   const [goalInput, setGoalInput] = useState('4000');
   const [repInput, setRepInput] = useState('100');
   const [isDefaultRep, setIsDefaultRep] = useState(true);
+  const [isDefaultGoal, setIsDefaultGoal] = useState(true);
+  const [isGoalFocused, setIsGoalFocused] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -43,15 +46,20 @@ const WorkoutTracker: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [lastSyncPoint, setLastSyncPoint] = useState(0);
   const [chartKey, setChartKey] = useState(0);
+  const [commonGoals, setCommonGoals] = useState<number[]>([]);
+  const [goalInputError, setGoalInputError] = useState<string>('');
+  const [repInputError, setRepInputError] = useState<string>('');
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
 
   useEffect(() => {
-    // Run backup cleanup check first, then fetch current session
+    // Run backup cleanup check first, then check for session recovery and fetch current session
     runBackupCleanup().then(() => {
+      checkSessionRecovery();
       fetchCurrentSession();
       checkForTestData();
+      fetchCommonGoals();
     });
   }, []);
 
@@ -62,6 +70,112 @@ const WorkoutTracker: React.FC = () => {
     
     // Refresh test data status when toggling mode
     await checkForTestData();
+  };
+
+  const checkSessionRecovery = () => {
+    try {
+      const sessionData = localStorage.getItem('activeSession');
+      if (sessionData) {
+        const { sessionId, timestamp, status } = JSON.parse(sessionData);
+        const now = Date.now();
+        const timeDiff = now - timestamp;
+        const tenMinutes = 10 * 60 * 1000;
+        
+        // If within 10 minutes and session was active, keep UI in active state
+        // If more than 10 minutes or session was paused, will be handled by fetchCurrentSession
+        if (timeDiff <= tenMinutes && status === 'active') {
+          console.log('Recovering active session within 10 minutes');
+          setIsStarted(true);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to recover session:', error);
+      // Clear invalid session data
+      localStorage.removeItem('activeSession');
+    }
+  };
+
+  const saveSessionToLocalStorage = (session: TrainingSession | null) => {
+    if (session && (session.status === 'active' || session.status === 'paused')) {
+      localStorage.setItem('activeSession', JSON.stringify({
+        sessionId: session._id,
+        timestamp: Date.now(),
+        status: session.status
+      }));
+    } else {
+      localStorage.removeItem('activeSession');
+    }
+  };
+
+  const validateIntegerInput = (value: string, maxValue?: number): { isValid: boolean; error: string; sanitizedValue: string } => {
+    // Remove any whitespace
+    const trimmedValue = value.trim();
+    
+    // Allow empty string (will be handled by calling function)
+    if (trimmedValue === '') {
+      return { isValid: true, error: '', sanitizedValue: '' };
+    }
+    
+    // Check if it's a valid positive integer
+    const integerRegex = /^[1-9]\d*$/;
+    
+    if (!integerRegex.test(trimmedValue)) {
+      return { isValid: false, error: 'Please enter an Integer', sanitizedValue: '' };
+    }
+    
+    // Check for reasonable limits
+    const number = parseInt(trimmedValue, 10);
+    if (maxValue && number > maxValue) {
+      return { isValid: false, error: 'Please set a reasonable goal', sanitizedValue: '' };
+    }
+    
+    return { isValid: true, error: '', sanitizedValue: trimmedValue };
+  };
+
+  const fetchCommonGoals = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/user-preferences`);
+      if (response.data && response.data.commonGoals) {
+        setCommonGoals(response.data.commonGoals);
+      }
+    } catch (error) {
+      console.log('No user preferences found or failed to fetch:', error);
+      // Initialize with default empty array - not an error
+    }
+  };
+
+  const trackGoalUsage = async (goal: number) => {
+    // Don't track the default 100 goal as specified in requirements
+    if (goal === 100) return;
+    
+    try {
+      // Get current goal frequencies from localStorage
+      const storedFreqs = localStorage.getItem('goalFrequencies');
+      const frequencies = storedFreqs ? JSON.parse(storedFreqs) : {};
+      
+      // Update frequency for this goal
+      frequencies[goal] = (frequencies[goal] || 0) + 1;
+      
+      // Save back to localStorage
+      localStorage.setItem('goalFrequencies', JSON.stringify(frequencies));
+      
+      // Get top 3 most frequent goals (excluding 100)
+      const sortedGoals = Object.entries(frequencies)
+        .filter(([goalStr]) => parseInt(goalStr) !== 100)
+        .sort(([,a], [,b]) => (b as number) - (a as number))
+        .slice(0, 3)
+        .map(([goalStr]) => parseInt(goalStr));
+      
+      // Update backend with new common goals
+      await axios.post(`${API_BASE}/user-preferences`, {
+        commonGoals: sortedGoals
+      });
+      
+      // Update local state
+      setCommonGoals(sortedGoals);
+    } catch (error) {
+      console.error('Failed to track goal usage:', error);
+    }
   };
 
   const runBackupCleanup = async () => {
@@ -136,6 +250,11 @@ const WorkoutTracker: React.FC = () => {
         if (response.data.status === "active") {
           startAutoPauseTimer(response.data._id);
         }
+        // Save session to localStorage for recovery
+        saveSessionToLocalStorage(response.data);
+      } else {
+        // No active session, clear localStorage
+        saveSessionToLocalStorage(null);
       }
     } catch (error) {
       console.error('Failed to fetch current session:', error);
@@ -145,10 +264,26 @@ const WorkoutTracker: React.FC = () => {
   };
 
   const setDailyGoal = () => {
-    const goal = parseInt(goalInput);
-    if (goal >= 100) {
-      setIsStarted(true);
+    // Use default 4000 if empty, otherwise validate input
+    let goal = 4000;
+    if (goalInput !== '') {
+      const validation = validateIntegerInput(goalInput, 20000);
+      
+      if (!validation.isValid) {
+        setGoalInputError(validation.error);
+        return;
+      }
+      
+      goal = parseInt(validation.sanitizedValue || goalInput);
     }
+    if (goal < 100) {
+      setGoalInputError('Goal must be at least 100 jumps');
+      return;
+    }
+    
+    // Clear any previous errors and proceed
+    setGoalInputError('');
+    setIsStarted(true);
   };
 
   const startWorkout = async () => {
@@ -165,6 +300,10 @@ const WorkoutTracker: React.FC = () => {
       setLastSyncPoint(0); // Reset sync point for new session
       // Start auto-pause timer for new session
       startAutoPauseTimer(response.data._id);
+      // Save new session to localStorage
+      saveSessionToLocalStorage(response.data);
+      // Track goal usage for common goals feature
+      await trackGoalUsage(goal);
     } catch (error) {
       console.error('Failed to start workout:', error);
     }
@@ -173,7 +312,27 @@ const WorkoutTracker: React.FC = () => {
   const addReps = async () => {
     if (!currentSession) return;
     
-    const reps = repInput === '' ? 100 : parseInt(repInput) || 100;
+    const remainingGoal = currentSession.goal - currentSession.completed;
+    
+    // Use default 100 if empty, otherwise validate input
+    let reps = 100;
+    if (repInput !== '') {
+      const validation = validateIntegerInput(repInput);
+      if (!validation.isValid) {
+        setRepInputError(validation.error);
+        return;
+      }
+      reps = parseInt(validation.sanitizedValue);
+    }
+    
+    // Check if reps exceeds remaining goal
+    if (reps > remainingGoal) {
+      setRepInputError(`Cannot exceed remaining goal (${remainingGoal.toLocaleString()})`);
+      return;
+    }
+    
+    // Clear any previous errors
+    setRepInputError('');
     if (reps > 0) {
       try {
         const newCompleted = currentSession.completed + reps;
@@ -182,6 +341,8 @@ const WorkoutTracker: React.FC = () => {
           completed: newCompleted
         });
         setCurrentSession(response.data);
+        // Update localStorage with new progress
+        saveSessionToLocalStorage(response.data);
         setRepInput('100');
         setIsDefaultRep(true);
         setNeedsSync(true); // Mark as needing sync after progress update
@@ -235,6 +396,8 @@ const WorkoutTracker: React.FC = () => {
             // Update UI state for completion
             setCompletedSession({...currentSession, completed: newCompleted});
             setCurrentSession(null);
+            // Clear session from localStorage on completion
+            saveSessionToLocalStorage(null);
             setIsWorkoutComplete(true);
             await checkForTestData();
             
@@ -311,6 +474,8 @@ const WorkoutTracker: React.FC = () => {
         action: 'pause'
       });
       setCurrentSession(response.data);
+      // Update localStorage with paused status
+      saveSessionToLocalStorage(response.data);
       clearAutoPauseTimer(); // Stop auto-pause timer when manually paused
     } catch (error) {
       console.error('Failed to pause workout:', error);
@@ -325,6 +490,8 @@ const WorkoutTracker: React.FC = () => {
         action: 'resume'
       });
       setCurrentSession(response.data);
+      // Update localStorage with resumed status
+      saveSessionToLocalStorage(response.data);
       // Start auto-pause timer when resuming
       startAutoPauseTimer(response.data._id);
     } catch (error) {
@@ -361,6 +528,8 @@ const WorkoutTracker: React.FC = () => {
       // Save completed session and switch to completed state
       setCompletedSession(currentSession);
       setCurrentSession(null);
+      // Clear session from localStorage on manual end
+      saveSessionToLocalStorage(null);
       setIsWorkoutComplete(true);
       
       // Clear auto-pause timer when session ends
@@ -381,6 +550,8 @@ const WorkoutTracker: React.FC = () => {
     setCompletedSession(null);
     setIsStarted(false);
     setGoalInput('4000');
+    setIsDefaultGoal(true);
+    setIsGoalFocused(false);
     // Clear any remaining auto-pause timer
     clearAutoPauseTimer();
   };
@@ -415,13 +586,21 @@ const WorkoutTracker: React.FC = () => {
         <div className="toggle-container">
           <button 
             className={`toggle-option ${!isTestingMode ? 'active' : ''}`}
-            onClick={() => setIsTestingMode(false)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsTestingMode(false);
+            }}
           >
             Off
           </button>
           <button 
             className={`toggle-option ${isTestingMode ? 'active' : ''}`}
-            onClick={() => setIsTestingMode(true)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsTestingMode(true);
+            }}
           >
             On
           </button>
@@ -502,21 +681,77 @@ const WorkoutTracker: React.FC = () => {
           <TestingControls />
           <div className="goal-setup">
             <h1 className="welcome-text">What's your jump rope goal today?</h1>
+            {commonGoals.length > 0 && (
+              <div className="common-goals-container">
+                <div className="common-goals-label">Your common goals:</div>
+                <div className="common-goals-buttons">
+                  {commonGoals.map((goal) => (
+                    <button
+                      key={goal}
+                      className="common-goal-btn"
+                      onClick={() => {
+                        setGoalInput(goal.toString());
+                        setIsDefaultGoal(false);
+                        if (goal >= 100) {
+                          setIsStarted(true);
+                        }
+                      }}
+                    >
+                      {goal.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="goal-input-container">
               <input
-                type="number"
-                className="goal-input"
-                value={goalInput}
-                onChange={(e) => setGoalInput(e.target.value)}
+                ref={goalInputRef}
+                type="text"
+                className={`goal-input ${goalInputError ? 'error' : ''}`}
+                value={isGoalFocused ? (goalInput === '4000' && isDefaultGoal ? '' : goalInput) : goalInput}
+                onFocus={() => {
+                  setIsGoalFocused(true);
+                  if (isDefaultGoal) {
+                    setGoalInput('');
+                    setIsDefaultGoal(false);
+                  }
+                  setGoalInputError('');
+                }}
+                onBlur={() => {
+                  setIsGoalFocused(false);
+                  if (goalInput === '') {
+                    setGoalInput('4000');
+                    setIsDefaultGoal(true);
+                    setGoalInputError('');
+                  }
+                }}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const validation = validateIntegerInput(value, 20000);
+                  
+                  // Always update the input value (for immediate feedback)
+                  setGoalInput(value);
+                  
+                  // Clear error if input becomes valid, show error if invalid
+                  if (validation.isValid || value === '') {
+                    setGoalInputError('');
+                  } else {
+                    setGoalInputError(validation.error);
+                  }
+                }}
                 onKeyPress={handleKeyPress}
                 placeholder="4000"
-                min="100"
                 autoFocus
               />
               <button className="set-goal-btn" onClick={setDailyGoal}>
                 Set Goal
               </button>
             </div>
+            {goalInputError && (
+              <div className="error-message">
+                {goalInputError}
+              </div>
+            )}
           </div>
           <WeeklyChart key={chartKey} />
           <DeleteConfirmModal />
@@ -580,13 +815,49 @@ const WorkoutTracker: React.FC = () => {
         <div className="input-container">
           <input
             type="text"
-            className={`rep-input ${isDefaultRep ? 'default-value' : ''}`}
+            className={`rep-input ${isDefaultRep ? 'default-value' : ''} ${repInputError ? 'error' : ''}`}
             value={repInput}
             onChange={(e) => {
               const value = e.target.value;
-              if (value === '' || /^\d+$/.test(value)) {
+              
+              // Allow empty input (will use default 100)
+              if (value === '') {
                 setRepInput(value);
                 setIsDefaultRep(false);
+                setRepInputError('');
+                return;
+              }
+              
+              const validation = validateIntegerInput(value);
+              
+              // Always update the input value for immediate feedback
+              setRepInput(value);
+              setIsDefaultRep(false);
+              
+              // Show/clear error based on validation
+              if (validation.isValid) {
+                // Check if the input exceeds remaining goal
+                const reps = parseInt(validation.sanitizedValue);
+                const remainingGoal = currentSession.goal - currentSession.completed;
+                if (reps > remainingGoal) {
+                  setRepInputError(`Cannot exceed remaining goal (${remainingGoal.toLocaleString()})`);
+                } else {
+                  setRepInputError('');
+                }
+              } else {
+                setRepInputError(validation.error);
+              }
+            }}
+            onFocus={() => {
+              setRepInput('');
+              setIsDefaultRep(false);
+              setRepInputError('');
+            }}
+            onBlur={() => {
+              if (repInput === '') {
+                setRepInput('100');
+                setIsDefaultRep(true);
+                setRepInputError('');
               }
             }}
             onKeyPress={handleKeyPress}
@@ -601,6 +872,12 @@ const WorkoutTracker: React.FC = () => {
             +
           </button>
         </div>
+        
+        {repInputError && (
+          <div className="error-message">
+            {repInputError}
+          </div>
+        )}
         
         <div className="session-controls">
           {currentSession.status === "active" && (
