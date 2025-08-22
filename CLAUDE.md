@@ -61,8 +61,20 @@ Frontend uses same API_BASE path (/.netlify/functions) for both environments. Mo
 Before implementing any bug fix or new feature, you MUST:
 
 1. **Analyze the issue/requirement** thoroughly
-2. **Propose a specific implementation approach** with technical details
-3. **Discuss and get agreement** on the solution strategy
-4. **Only then proceed** to write the actual code
+2. **Assess complexity**:
+   - **Simple tasks** (UI fixes, small bugs): Propose solution directly in chat
+   - **Complex tasks** (new features, major changes): Request to create `IMPLEMENTATION_PROGRESS.md` for detailed tracking
+3. **Propose a specific implementation approach** with technical details
+4. **Discuss and get agreement** on the solution strategy
+5. **Only then proceed** to write the actual code
 
-This prevents time waste from back-and-forth debugging and ensures we're aligned on the solution before implementation. Always present your implementation plan first, wait for confirmation, then code.
+**For Complex Tasks:**
+- Create temporary `[feature-name]_IMPP.md` file (e.g., `user-auth_IMPP.md`, `chart-filters_IMPP.md`) with **high-level steps and todo lists only**
+- **Step-by-Step Implementation**:
+  - When working on each step, show implementation plan in **chat** (for simple todos) or **add to MD** (for complex todos requiring multiple steps)
+  - **Get agreement** for each todo item before implementing
+  - Only dive into detailed analysis when actually reaching each step (not upfront)
+- Update progress file throughout implementation across multiple sessions
+- Delete temp file only when feature is fully complete
+
+**Benefits**: Prevents over-planning while maintaining structure. Allows agile approach where we plan as we go, ensuring alignment at each step without wasting time on premature detailed analysis.

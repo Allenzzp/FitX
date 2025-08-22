@@ -13,6 +13,7 @@ interface TrainingSession {
   pausedAt: string | null;
   lastActivityAt: string;
   actualWorkoutDuration: number;
+  testing?: boolean;
   trainingSegments: {
     start: string;
     end: string | null;
@@ -570,6 +571,7 @@ const WorkoutTracker: React.FC = () => {
     setGoalInput('');
     setIsDefaultGoal(true);
     setIsGoalFocused(false);
+    setIsTestingMode(false); // Reset testing mode to default "Off"
     // Clear any remaining auto-pause timer
     clearAutoPauseTimer();
   };
@@ -599,35 +601,45 @@ const WorkoutTracker: React.FC = () => {
   // Testing controls component
   const TestingControls = () => (
     <div className="testing-controls">
-      <div className="testing-toggle">
-        <span className="testing-label">Test:</span>
-        <div className="toggle-container">
-          <button 
-            className={`toggle-option ${!isTestingMode ? 'active' : ''}`}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (isTestingMode) {
-                toggleTestingMode();
-              }
-            }}
-          >
-            Off
-          </button>
-          <button 
-            className={`toggle-option ${isTestingMode ? 'active' : ''}`}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (!isTestingMode) {
-                toggleTestingMode();
-              }
-            }}
-          >
-            On
-          </button>
+      {!currentSession && !isWorkoutComplete ? (
+        // Show toggle only when no active session (session creation)
+        <div className="testing-toggle">
+          <span className="testing-label">Test:</span>
+          <div className="toggle-container">
+            <button 
+              className={`toggle-option ${!isTestingMode ? 'active' : ''}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isTestingMode) {
+                  toggleTestingMode();
+                }
+              }}
+            >
+              Off
+            </button>
+            <button 
+              className={`toggle-option ${isTestingMode ? 'active' : ''}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isTestingMode) {
+                  toggleTestingMode();
+                }
+              }}
+            >
+              On
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        // Show mode status when session is active or on completion screen (read-only)
+        <div className="testing-mode-status">
+          <span className="mode-label">
+            Mode: {(currentSession?.testing === true || completedSession?.testing === true) ? 'Test Training' : 'Real Training'}
+          </span>
+        </div>
+      )}
       {hasTestData && (
         <button className="delete-test-btn" onClick={() => setShowDeleteConfirm(true)}>
           Delete Test Data
@@ -762,7 +774,6 @@ const WorkoutTracker: React.FC = () => {
                 }}
                 onKeyPress={handleKeyPress}
                 placeholder=""
-                autoFocus
               />
               <button className="set-goal-btn" onClick={setDailyGoal}>
                 Set Goal
