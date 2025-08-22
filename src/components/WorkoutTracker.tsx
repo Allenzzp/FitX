@@ -30,8 +30,8 @@ const WorkoutTracker: React.FC = () => {
   const goalInputRef = useRef<HTMLInputElement>(null);
   const [currentSession, setCurrentSession] = useState<TrainingSession | null>(null);
   const [autoPauseTimer, setAutoPauseTimer] = useState<NodeJS.Timeout | null>(null);
-  const [goalInput, setGoalInput] = useState('4000');
-  const [repInput, setRepInput] = useState('100');
+  const [goalInput, setGoalInput] = useState('');
+  const [repInput, setRepInput] = useState('');
   const [isDefaultRep, setIsDefaultRep] = useState(true);
   const [isDefaultGoal, setIsDefaultGoal] = useState(true);
   const [isGoalFocused, setIsGoalFocused] = useState(false);
@@ -288,7 +288,23 @@ const WorkoutTracker: React.FC = () => {
 
   const startWorkout = async () => {
     try {
-      const goal = parseInt(goalInput);
+      // Use default 4000 if empty, otherwise validate input
+      let goal = 4000;
+      if (goalInput !== '') {
+        const validation = validateIntegerInput(goalInput, 20000);
+        
+        if (!validation.isValid) {
+          console.error('Invalid goal input:', validation.error);
+          return;
+        }
+        
+        goal = parseInt(validation.sanitizedValue || goalInput);
+      }
+      if (goal < 100) {
+        console.error('Goal must be at least 100 jumps');
+        return;
+      }
+      
       const now = new Date();
       const response = await axios.post(`${API_BASE}/training-sessions`, {
         goal: goal,
@@ -343,7 +359,7 @@ const WorkoutTracker: React.FC = () => {
         setCurrentSession(response.data);
         // Update localStorage with new progress
         saveSessionToLocalStorage(response.data);
-        setRepInput('100');
+        setRepInput('');
         setIsDefaultRep(true);
         setNeedsSync(true); // Mark as needing sync after progress update
         
@@ -549,7 +565,7 @@ const WorkoutTracker: React.FC = () => {
     setIsWorkoutComplete(false);
     setCompletedSession(null);
     setIsStarted(false);
-    setGoalInput('4000');
+    setGoalInput('');
     setIsDefaultGoal(true);
     setIsGoalFocused(false);
     // Clear any remaining auto-pause timer
@@ -589,7 +605,9 @@ const WorkoutTracker: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setIsTestingMode(false);
+              if (isTestingMode) {
+                toggleTestingMode();
+              }
             }}
           >
             Off
@@ -599,7 +617,9 @@ const WorkoutTracker: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setIsTestingMode(true);
+              if (!isTestingMode) {
+                toggleTestingMode();
+              }
             }}
           >
             On
@@ -707,8 +727,8 @@ const WorkoutTracker: React.FC = () => {
               <input
                 ref={goalInputRef}
                 type="text"
-                className={`goal-input ${goalInputError ? 'error' : ''}`}
-                value={isGoalFocused ? (goalInput === '4000' && isDefaultGoal ? '' : goalInput) : goalInput}
+                className={`goal-input ${goalInputError ? 'error' : ''} ${isDefaultGoal ? 'default-value' : ''}`}
+                value={isDefaultGoal ? '4000' : goalInput}
                 onFocus={() => {
                   setIsGoalFocused(true);
                   if (isDefaultGoal) {
@@ -720,7 +740,6 @@ const WorkoutTracker: React.FC = () => {
                 onBlur={() => {
                   setIsGoalFocused(false);
                   if (goalInput === '') {
-                    setGoalInput('4000');
                     setIsDefaultGoal(true);
                     setGoalInputError('');
                   }
@@ -740,7 +759,7 @@ const WorkoutTracker: React.FC = () => {
                   }
                 }}
                 onKeyPress={handleKeyPress}
-                placeholder="4000"
+                placeholder=""
                 autoFocus
               />
               <button className="set-goal-btn" onClick={setDailyGoal}>
@@ -763,7 +782,7 @@ const WorkoutTracker: React.FC = () => {
         <div className="workout-container">
           <TestingControls />
           <div className="goal-setup">
-            <h1 className="welcome-text">Goal: {parseInt(goalInput).toLocaleString()} jumps</h1>
+            <h1 className="welcome-text">Goal: {(isDefaultGoal ? 4000 : parseInt(goalInput)).toLocaleString()} jumps</h1>
             <p className="ready-text">Ready to start today's workout?</p>
             <button className="start-btn" onClick={startWorkout}>
               Start Training
@@ -816,7 +835,7 @@ const WorkoutTracker: React.FC = () => {
           <input
             type="text"
             className={`rep-input ${isDefaultRep ? 'default-value' : ''} ${repInputError ? 'error' : ''}`}
-            value={repInput}
+            value={isDefaultRep ? '100' : repInput}
             onChange={(e) => {
               const value = e.target.value;
               
@@ -849,19 +868,20 @@ const WorkoutTracker: React.FC = () => {
               }
             }}
             onFocus={() => {
-              setRepInput('');
-              setIsDefaultRep(false);
+              if (isDefaultRep) {
+                setRepInput('');
+                setIsDefaultRep(false);
+              }
               setRepInputError('');
             }}
             onBlur={() => {
               if (repInput === '') {
-                setRepInput('100');
                 setIsDefaultRep(true);
                 setRepInputError('');
               }
             }}
             onKeyPress={handleKeyPress}
-            placeholder="100"
+            placeholder=""
             disabled={currentSession.status === "paused"}
           />
           <button 

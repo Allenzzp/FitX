@@ -169,6 +169,10 @@
   color: #86868b;
 }
 
+.goal-input.default-value {
+  color: #86868b;
+}
+
 .add-btn {
   width: 64px; /* Increased for better mobile touch target */
   height: 64px; /* Increased for better mobile touch target */
