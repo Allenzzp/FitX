@@ -318,6 +318,8 @@ const WorkoutTracker: React.FC = () => {
       startAutoPauseTimer(response.data._id);
       // Save new session to localStorage
       saveSessionToLocalStorage(response.data);
+      // Check for test data after session creation (to show delete button immediately)
+      await checkForTestData();
       // Track goal usage for common goals feature
       await trackGoalUsage(goal);
     } catch (error) {

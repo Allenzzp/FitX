@@ -54,3 +54,15 @@ The application uses a session-based architecture where workout sessions are the
 
 **Development vs Production:**
 Frontend uses same API_BASE path (/.netlify/functions) for both environments. Mock API automatically activates when real functions return errors, enabling frontend-only development.
+
+## Implementation Workflow
+
+**REQUIRED: Discuss Before Coding**
+Before implementing any bug fix or new feature, you MUST:
+
+1. **Analyze the issue/requirement** thoroughly
+2. **Propose a specific implementation approach** with technical details
+3. **Discuss and get agreement** on the solution strategy
+4. **Only then proceed** to write the actual code
+
+This prevents time waste from back-and-forth debugging and ensures we're aligned on the solution before implementation. Always present your implementation plan first, wait for confirmation, then code.
