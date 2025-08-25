@@ -807,3 +807,82 @@
   margin-left: auto;
   margin-right: auto;
 }
+
+/* Quick Rep Options Styles */
+.quick-rep-options {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 15px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.quick-rep-btn {
+  background: linear-gradient(180deg, #f2f2f7 0%, #e5e5ea 100%);
+  color: #2C2C2E;
+  border: 1px solid #d1d1d6;
+  padding: 10px 18px;
+  border-radius: 16px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 60px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  letter-spacing: -0.01em;
+}
+
+.quick-rep-btn:hover {
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
+  color: white;
+  border-color: #6BC5BD;
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(129, 216, 208, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.quick-rep-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.quick-rep-btn.clicked {
+  background: linear-gradient(180deg, #6BC5BD 0%, #55B2AA 100%);
+  color: white;
+  border-color: #55B2AA;
+  transform: scale(0.95);
+  box-shadow: 
+    0 2px 8px rgba(129, 216, 208, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.quick-rep-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.quick-rep-btn:disabled:hover {
+  background: linear-gradient(180deg, #f2f2f7 0%, #e5e5ea 100%);
+  color: #2C2C2E;
+  border-color: #d1d1d6;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile responsive for quick rep options */
+@media (max-width: 480px) {
+  .quick-rep-options {
+    gap: 8px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .quick-rep-btn {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    min-width: 50px;
+  }
+}

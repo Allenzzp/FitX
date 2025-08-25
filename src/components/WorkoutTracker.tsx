@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import WeeklyChart from './WeeklyChart';
+import { RepPatternsManager } from '../utils/repPatternsManager';
 import './WorkoutTracker.css';
 
 interface TrainingSession {
@@ -50,17 +51,29 @@ const WorkoutTracker: React.FC = () => {
   const [commonGoals, setCommonGoals] = useState<number[]>([]);
   const [goalInputError, setGoalInputError] = useState<string>('');
   const [repInputError, setRepInputError] = useState<string>('');
+  const [quickRepOptions, setQuickRepOptions] = useState<number[]>([]);
+  const [repPatternsManager] = useState(() => new RepPatternsManager());
+  const [clickedButton, setClickedButton] = useState<number | null>(null);
+  const [isRepInputFocused, setIsRepInputFocused] = useState(false);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
 
   useEffect(() => {
     // Run backup cleanup check first, then check for session recovery and fetch current session
-    runBackupCleanup().then(() => {
+    runBackupCleanup().then(async () => {
       checkSessionRecovery();
       fetchCurrentSession();
       checkForTestData();
       fetchCommonGoals();
+      
+      // Initialize rep patterns manager
+      try {
+        await repPatternsManager.initialize();
+        updateQuickRepOptions();
+      } catch (error) {
+        console.error('Failed to initialize rep patterns:', error);
+      }
     });
   }, []);
 
@@ -143,6 +156,12 @@ const WorkoutTracker: React.FC = () => {
       console.log('No user preferences found or failed to fetch:', error);
       // Initialize with default empty array - not an error
     }
+  };
+
+  const updateQuickRepOptions = () => {
+    const options = repPatternsManager.getTopThreePatterns();
+    setQuickRepOptions(options);
+    console.log('Updated quick rep options:', options);
   };
 
   const trackGoalUsage = async (goal: number) => {
@@ -328,6 +347,113 @@ const WorkoutTracker: React.FC = () => {
     }
   };
 
+  const addQuickReps = async (reps: number) => {
+    if (!currentSession || currentSession.status === "paused") return;
+    
+    const remainingGoal = currentSession.goal - currentSession.completed;
+    
+    // Check if reps exceeds remaining goal
+    if (reps > remainingGoal) {
+      setRepInputError(`Cannot exceed remaining goal (${remainingGoal.toLocaleString()})`);
+      return;
+    }
+    
+    // Clear any previous errors
+    setRepInputError('');
+    
+    try {
+      // Show button animation
+      setClickedButton(reps);
+      setTimeout(() => setClickedButton(null), 200);
+      
+      // Track rep usage for pattern learning
+      repPatternsManager.trackRepUsage(reps);
+      updateQuickRepOptions();
+      
+      const newCompleted = currentSession.completed + reps;
+      const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+        action: 'updateProgress',
+        completed: newCompleted
+      });
+      setCurrentSession(response.data);
+      // Update localStorage with new progress
+      saveSessionToLocalStorage(response.data);
+      setNeedsSync(true); // Mark as needing sync after progress update
+      
+      // Reset auto-pause timer on activity
+      resetAutoPauseTimer(currentSession._id);
+      
+      // Auto-sync every 500 reps (but not when goal is reached, as endWorkout will handle that)
+      if (newCompleted >= lastSyncPoint + 500 && newCompleted < currentSession.goal && currentSession.status === "active") {
+        console.log('Auto-sync triggered at', newCompleted, 'reps');
+        // Actually perform the sync to database
+        try {
+          await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+            action: 'updateProgress',
+            completed: newCompleted
+          });
+          setNeedsSync(false); // Auto-sync completed, reset sync state
+          setLastSyncPoint(Math.floor(newCompleted / 500) * 500); // Update sync point
+          console.log('Auto-sync completed for', newCompleted, 'reps');
+        } catch (error) {
+          console.error('Auto-sync failed:', error);
+          // Keep needsSync as true if auto-sync fails
+        }
+      }
+      
+      // Final sync and auto-complete session when goal is reached
+      if (newCompleted >= currentSession.goal) {
+        // Sync rep patterns before completing
+        try {
+          await repPatternsManager.syncToDatabase();
+          updateQuickRepOptions();
+        } catch (error) {
+          console.error('Failed to sync rep patterns on completion:', error);
+        }
+        
+        // Final sync: update progress AND end session in one operation
+        try {
+          const now = new Date();
+          await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+            action: 'finalSync',
+            completed: newCompleted,
+            endTime: now.toISOString()
+          });
+          
+          // Create daily summary with correct final count
+          const today = new Date();
+          const localDate = today.toLocaleDateString("en-CA");
+          // Create timezone-aware date that preserves the local date
+          const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+          await axios.post(`${API_BASE}/daily-summaries`, {
+            date: localMidnight,
+            totalJumps: newCompleted,
+            sessionsCount: 1,
+            testing: isTestingMode,
+            createdAt: today.toISOString(),
+            updatedAt: today.toISOString()
+          });
+          
+          // Update UI state for completion
+          setCompletedSession({...currentSession, completed: newCompleted});
+          setCurrentSession(null);
+          // Clear session from localStorage on completion
+          saveSessionToLocalStorage(null);
+          setIsWorkoutComplete(true);
+          await checkForTestData();
+          
+          // Force chart refresh to show new data
+          setChartKey(prev => prev + 1);
+          
+        } catch (error) {
+          console.error('Failed to complete workout:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update progress:', error);
+    }
+  };
+
   const addReps = async () => {
     if (!currentSession) return;
     
@@ -354,6 +480,10 @@ const WorkoutTracker: React.FC = () => {
     setRepInputError('');
     if (reps > 0) {
       try {
+        // Track rep usage for pattern learning
+        repPatternsManager.trackRepUsage(reps);
+        updateQuickRepOptions();
+        
         const newCompleted = currentSession.completed + reps;
         const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
           action: 'updateProgress',
@@ -389,6 +519,14 @@ const WorkoutTracker: React.FC = () => {
         
         // Final sync and auto-complete session when goal is reached
         if (newCompleted >= currentSession.goal) {
+          // Sync rep patterns before completing
+          try {
+            await repPatternsManager.syncToDatabase();
+            updateQuickRepOptions();
+          } catch (error) {
+            console.error('Failed to sync rep patterns on completion:', error);
+          }
+          
           // Final sync: update progress AND end session in one operation
           try {
             const now = new Date();
@@ -489,6 +627,14 @@ const WorkoutTracker: React.FC = () => {
     if (!currentSession) return;
     
     try {
+      // Sync rep patterns before pausing
+      try {
+        await repPatternsManager.syncToDatabase();
+        updateQuickRepOptions();
+      } catch (error) {
+        console.error('Failed to sync rep patterns on pause:', error);
+      }
+      
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'pause'
       });
@@ -522,6 +668,14 @@ const WorkoutTracker: React.FC = () => {
     if (!currentSession) return;
     
     try {
+      // Sync rep patterns before ending
+      try {
+        await repPatternsManager.syncToDatabase();
+        updateQuickRepOptions();
+      } catch (error) {
+        console.error('Failed to sync rep patterns on end:', error);
+      }
+      
       const now = new Date();
       
       // End the session (for manual end workout button)
@@ -881,6 +1035,7 @@ const WorkoutTracker: React.FC = () => {
               }
             }}
             onFocus={() => {
+              setIsRepInputFocused(true);
               if (isDefaultRep) {
                 setRepInput('');
                 setIsDefaultRep(false);
@@ -888,6 +1043,7 @@ const WorkoutTracker: React.FC = () => {
               setRepInputError('');
             }}
             onBlur={() => {
+              setIsRepInputFocused(false);
               if (repInput === '') {
                 setIsDefaultRep(true);
                 setRepInputError('');
@@ -905,6 +1061,21 @@ const WorkoutTracker: React.FC = () => {
             +
           </button>
         </div>
+        
+        {quickRepOptions.length > 0 && isRepInputFocused && (
+          <div className="quick-rep-options">
+            {quickRepOptions.map((repCount) => (
+              <button
+                key={repCount}
+                className={`quick-rep-btn ${clickedButton === repCount ? 'clicked' : ''}`}
+                onClick={() => addQuickReps(repCount)}
+                disabled={currentSession.status === "paused"}
+              >
+                {repCount}
+              </button>
+            ))}
+          </div>
+        )}
         
         {repInputError && (
           <div className="error-message">
