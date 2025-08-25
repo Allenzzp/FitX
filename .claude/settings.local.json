@@ -5,7 +5,9 @@
       "Bash(npm create:*)",
       "Bash(npm install)",
       "Bash(npm init:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Read(/c:\\Users\\allen\\Desktop/**)",
+      "Read(/D:\\DevpTools\\Typora\\java\\pic_java_syntax/**)"
     ],
     "deny": []
   }

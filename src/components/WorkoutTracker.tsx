@@ -240,6 +240,13 @@ const WorkoutTracker: React.FC = () => {
 
   const deleteTestData = async () => {
     try {
+      // Check if current session is a testing session
+      if (currentSession?.testing === true) {
+        // End the current testing session first (regardless of active/paused status)
+        console.log('Ending current testing session before deleting test data');
+        await endWorkout();
+      }
+      
       // Delete test training sessions
       await axios.delete(`${API_BASE}/training-sessions?deleteTestData=true`);
       // Delete test daily summaries
@@ -920,77 +927,77 @@ const WorkoutTracker: React.FC = () => {
           </div>
         )}
         
-        <div className="input-container">
-          <input
-            type="text"
-            className={`rep-input ${isDefaultRep ? 'default-value' : ''} ${repInputError ? 'error' : ''}`}
-            value={isDefaultRep ? '100' : repInput}
-            onChange={(e) => {
-              const value = e.target.value;
-              
-              // Allow empty input (will use default 100)
-              if (value === '') {
+        {currentSession.status !== "paused" && (
+          <div className="input-container">
+            <input
+              type="text"
+              className={`rep-input ${isDefaultRep ? 'default-value' : ''} ${repInputError ? 'error' : ''}`}
+              value={isDefaultRep ? '100' : repInput}
+              onChange={(e) => {
+                const value = e.target.value;
+                
+                // Allow empty input (will use default 100)
+                if (value === '') {
+                  setRepInput(value);
+                  setIsDefaultRep(false);
+                  setRepInputError('');
+                  return;
+                }
+                
+                const validation = validateIntegerInput(value);
+                
+                // Always update the input value for immediate feedback
                 setRepInput(value);
                 setIsDefaultRep(false);
-                setRepInputError('');
-                return;
-              }
-              
-              const validation = validateIntegerInput(value);
-              
-              // Always update the input value for immediate feedback
-              setRepInput(value);
-              setIsDefaultRep(false);
-              
-              // Show/clear error based on validation
-              if (validation.isValid) {
-                // Check if the input exceeds remaining goal
-                const reps = parseInt(validation.sanitizedValue);
-                const remainingGoal = currentSession.goal - currentSession.completed;
-                if (reps > remainingGoal) {
-                  setRepInputError(`Cannot exceed remaining goal (${remainingGoal.toLocaleString()})`);
+                
+                // Show/clear error based on validation
+                if (validation.isValid) {
+                  // Check if the input exceeds remaining goal
+                  const reps = parseInt(validation.sanitizedValue);
+                  const remainingGoal = currentSession.goal - currentSession.completed;
+                  if (reps > remainingGoal) {
+                    setRepInputError(`Cannot exceed remaining goal (${remainingGoal.toLocaleString()})`);
+                  } else {
+                    setRepInputError('');
+                  }
                 } else {
+                  setRepInputError(validation.error);
+                }
+              }}
+              onFocus={() => {
+                setIsRepInputFocused(true);
+                if (isDefaultRep) {
+                  setRepInput('');
+                  setIsDefaultRep(false);
+                }
+                setRepInputError('');
+              }}
+              onBlur={() => {
+                // Delay hiding options to allow button clicks to process
+                setTimeout(() => {
+                  if (!isInteractingWithButtons) {
+                    setIsRepInputFocused(false);
+                  }
+                }, 150);
+                
+                if (repInput === '') {
+                  setIsDefaultRep(true);
                   setRepInputError('');
                 }
-              } else {
-                setRepInputError(validation.error);
-              }
-            }}
-            onFocus={() => {
-              setIsRepInputFocused(true);
-              if (isDefaultRep) {
-                setRepInput('');
-                setIsDefaultRep(false);
-              }
-              setRepInputError('');
-            }}
-            onBlur={() => {
-              // Delay hiding options to allow button clicks to process
-              setTimeout(() => {
-                if (!isInteractingWithButtons) {
-                  setIsRepInputFocused(false);
-                }
-              }, 150);
-              
-              if (repInput === '') {
-                setIsDefaultRep(true);
-                setRepInputError('');
-              }
-            }}
-            onKeyPress={handleKeyPress}
-            placeholder=""
-            disabled={currentSession.status === "paused"}
-          />
-          <button 
-            className="add-btn" 
-            onClick={addReps}
-            disabled={currentSession.status === "paused"}
-          >
-            +
-          </button>
-        </div>
+              }}
+              onKeyPress={handleKeyPress}
+              placeholder=""
+            />
+            <button 
+              className="add-btn" 
+              onClick={addReps}
+            >
+              +
+            </button>
+          </div>
+        )}
         
-        {quickRepOptions.length > 0 && (isRepInputFocused || isInteractingWithButtons) && (
+        {quickRepOptions.length > 0 && (isRepInputFocused || isInteractingWithButtons) && currentSession.status !== "paused" && (
           <div className="quick-rep-options">
             {quickRepOptions.map((repCount) => (
               <button
@@ -1003,7 +1010,6 @@ const WorkoutTracker: React.FC = () => {
                   setIsRepInputFocused(false); // Hide options after successful click
                 }}
                 onMouseLeave={() => setIsInteractingWithButtons(false)}
-                disabled={currentSession.status === "paused"}
               >
                 {repCount}
               </button>
