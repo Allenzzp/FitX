@@ -9,112 +9,295 @@ interface DailySummary {
   sessionsCount: number;
 }
 
+interface WeekData {
+  data: DailySummary[];
+  meta: {
+    requestedWeeks: number[];
+    totalWeeksAvailable: number;
+    firstRecordDate: string;
+  };
+}
+
+interface CacheEntry {
+  weekNumber: number;
+  data: DailySummary[];
+  timestamp: number;
+}
+
 const WeeklyChart: React.FC = () => {
-  const [weeklyData, setWeeklyData] = useState<DailySummary[]>([]);
+  const [currentWeekData, setCurrentWeekData] = useState<DailySummary[]>([]);
+  const [currentWeekNumber, setCurrentWeekNumber] = useState<number>(1);
+  const [totalWeeksAvailable, setTotalWeeksAvailable] = useState<number>(0);
+  const [firstRecordDate, setFirstRecordDate] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [hasOlderData, setHasOlderData] = useState(false);
-  const [hasNewerData, setHasNewerData] = useState(false);
-  const [hasHistoricalData, setHasHistoricalData] = useState(false);
+  const [displayedWeek, setDisplayedWeek] = useState<number>(1);
+  const [cache] = useState<Map<number, DailySummary[]>>(new Map());
+  const [cacheQueue] = useState<number[]>([]); // FIFO queue for cache management
 
   const API_BASE = '/.netlify/functions';
+  const MAX_CACHE_SIZE = 10; // Maximum weeks to keep in cache
 
   useEffect(() => {
-    fetchWeeklyData();
-  }, [weekOffset]);
+    initializeChart();
+  }, []);
 
-  const fetchWeeklyData = async () => {
-    try {
-      const response = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${weekOffset}`);
-      console.log('Fetched weekly data:', response.data);
-      // Log each data item with its date
-      response.data.forEach((item: any, index: number) => {
-        console.log(`Data ${index}:`, {
-          id: item._id,
-          date: item.date,
-          dateString: new Date(item.date).toDateString(),
-          totalJumps: item.totalJumps
-        });
-      });
-      setWeeklyData(response.data);
+  // Smart Cache Management with Week 1 Priority
+  const addToCache = (weekNumber: number, data: DailySummary[]) => {
+    // Never cache current week - it changes frequently
+    if (weekNumber === currentWeekNumber) {
+      return;
+    }
+    
+    // Week 1 gets priority position (always keep)
+    if (weekNumber === 1) {
+      cache.set(1, data);
+      // Remove from queue if it exists, we'll manage Week 1 separately
+      const index = cacheQueue.indexOf(1);
+      if (index > -1) {
+        cacheQueue.splice(index, 1);
+      }
+    } else {
+      // For other historical weeks, apply FIFO
+      while (cacheQueue.length >= MAX_CACHE_SIZE - 1) { // -1 to reserve space for Week 1
+        const oldestWeek = cacheQueue.shift();
+        if (oldestWeek !== undefined && oldestWeek !== 1) {
+          cache.delete(oldestWeek);
+        }
+      }
       
-      // Check for navigation availability
-      await checkNavigationAvailability();
+      cache.set(weekNumber, data);
+      cacheQueue.push(weekNumber);
+    }
+    
+    // Save to sessionStorage (except current week)
+    const sessionKey = `weeklyChart_${weekNumber}`;
+    sessionStorage.setItem(sessionKey, JSON.stringify(data));
+  };
+
+  const getFromCache = (weekNumber: number): DailySummary[] | null => {
+    // Never return cached data for current week - always fetch fresh
+    if (weekNumber === currentWeekNumber) {
+      return null;
+    }
+    
+    // Check memory cache first
+    if (cache.has(weekNumber)) {
+      return cache.get(weekNumber) || null;
+    }
+    
+    // Check sessionStorage for historical weeks only
+    const sessionKey = `weeklyChart_${weekNumber}`;
+    const stored = sessionStorage.getItem(sessionKey);
+    if (stored) {
+      try {
+        const data = JSON.parse(stored);
+        // Add back to memory cache (with priority handling)
+        if (weekNumber === 1) {
+          cache.set(1, data); // Week 1 priority
+        } else {
+          cache.set(weekNumber, data);
+          if (!cacheQueue.includes(weekNumber)) {
+            cacheQueue.push(weekNumber);
+          }
+        }
+        return data;
+      } catch (error) {
+        // Remove invalid data
+        sessionStorage.removeItem(sessionKey);
+      }
+    }
+    
+    return null;
+  };
+
+  // Fetch metadata from new dedicated endpoint
+  const fetchMetadata = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/daily-summaries?metadata=true`);
+      return response.data;
     } catch (error) {
-      console.error('Failed to fetch weekly data:', error);
-      setWeeklyData([]);
-    } finally {
+      console.error('Failed to fetch metadata:', error);
+      return null;
+    }
+  };
+
+  // Fetch weeks from API
+  const fetchWeeks = async (weekNumbers: number[]): Promise<WeekData | null> => {
+    try {
+      const response = await axios.get(`${API_BASE}/daily-summaries?weekNumbers=${weekNumbers.join(',')}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to fetch weeks:', weekNumbers, error);
+      return null;
+    }
+  };
+
+  // Get data for a specific week (from cache or API)
+  const getWeekData = async (weekNumber: number): Promise<DailySummary[]> => {
+    // Check cache first
+    const cached = getFromCache(weekNumber);
+    if (cached) {
+      return cached;
+    }
+    
+    // Not in cache, need to fetch
+    const response = await fetchWeeks([weekNumber]);
+    
+    if (response?.data) {
+      // Find data for this specific week
+      const weekData = response.data.filter(item => {
+        const itemDate = new Date(item.date);
+        const itemWeek = getWeekNumberFromDate(itemDate, firstRecordDate);
+        return itemWeek === weekNumber;
+      });
+      
+      addToCache(weekNumber, weekData);
+      return weekData;
+    }
+    
+    return [];
+  };
+
+  // Calculate week number from date
+  const getWeekNumberFromDate = (date: Date, firstRecordDateStr: string): number => {
+    if (!firstRecordDateStr) return 1;
+    
+    const firstDate = new Date(firstRecordDateStr);
+    const firstMonday = getMondayOfWeek(firstDate);
+    const targetMonday = getMondayOfWeek(date);
+    
+    const diffTime = targetMonday.getTime() - firstMonday.getTime();
+    const diffWeeks = Math.floor(diffTime / (7 * 24 * 60 * 60 * 1000));
+    return diffWeeks + 1;
+  };
+
+  const getMondayOfWeek = (date: Date): Date => {
+    const result = new Date(date);
+    const dayOfWeek = result.getDay();
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    result.setDate(result.getDate() + diff);
+    result.setHours(0, 0, 0, 0);
+    return result;
+  };
+
+  // Initialize chart with phased loading using clean metadata API
+  const initializeChart = async () => {
+    try {
+      // Phase 1: Get metadata from dedicated endpoint (clean approach!)
+      const metadata = await fetchMetadata();
+      
+      if (!metadata) {
+        setLoading(false);
+        return;
+      }
+      
+      // Set metadata state
+      setTotalWeeksAvailable(metadata.totalWeeksAvailable);
+      setFirstRecordDate(metadata.firstRecordDate);
+      setCurrentWeekNumber(metadata.currentWeekNumber);
+      setDisplayedWeek(metadata.currentWeekNumber);
+      
+      // Phase 1: Load current week data (always fetch fresh - never cache)
+      const currentWeekResponse = await fetchWeeks([metadata.currentWeekNumber]);
+      let currentWeekData: DailySummary[] = [];
+      
+      if (currentWeekResponse?.data) {
+        currentWeekData = currentWeekResponse.data.filter(item => {
+          const itemDate = new Date(item.date);
+          const itemWeek = getWeekNumberFromDate(itemDate, metadata.firstRecordDate);
+          return itemWeek === metadata.currentWeekNumber;
+        });
+        // Note: Don't cache current week data (per Option B strategy)
+      }
+      
+      setCurrentWeekData(currentWeekData);
+      setLoading(false);
+      
+      // Phase 2+3: Load previous weeks + first week in parallel (background)
+      const loadPhase2And3 = async () => {
+        const currentWeek = metadata.currentWeekNumber;
+        const weeksToLoad: number[] = [];
+        
+        // Previous 2 weeks (if they exist)
+        if (currentWeek > 1) weeksToLoad.push(currentWeek - 1);
+        if (currentWeek > 2) weeksToLoad.push(currentWeek - 2);
+        
+        // First week (if different from current/previous weeks)
+        if (currentWeek > 3) weeksToLoad.push(1);
+        
+        if (weeksToLoad.length > 0) {
+          const response = await fetchWeeks(weeksToLoad);
+          if (response?.data) {
+            // Process and cache the data (historical weeks only)
+            weeksToLoad.forEach(weekNum => {
+              const weekData = response.data.filter(item => {
+                const itemDate = new Date(item.date);
+                const itemWeek = getWeekNumberFromDate(itemDate, metadata.firstRecordDate);
+                return itemWeek === weekNum;
+              });
+              addToCache(weekNum, weekData); // Will handle Week 1 priority automatically
+            });
+          }
+        }
+      };
+      
+      // Run Phase 2+3 in background
+      setTimeout(loadPhase2And3, 100);
+      
+    } catch (error) {
+      console.error('Failed to initialize chart:', error);
       setLoading(false);
     }
   };
 
-  const checkNavigationAvailability = async () => {
-    try {
-      // Right arrow: Show immediately if not at current week (weekOffset < 0)
-      const hasNewerDataValue = weekOffset < 0;
-      setHasNewerData(hasNewerDataValue);
-      
-      // Left arrow: Check if there's data in the previous week only
-      const prevWeekResponse = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${weekOffset - 1}`);
-      const hasDataBeforeCurrentView = prevWeekResponse.data.length > 0;
-      setHasOlderData(hasDataBeforeCurrentView);
-      
-      // Historical data check: Only check current week backwards to week -10 for historical indicator
-      let hasAnyHistoricalData = false;
-      for (let i = 1; i <= 10; i++) {
-        const checkHistoricalResponse = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${-i}`);
-        if (checkHistoricalResponse.data.length > 0) {
-          hasAnyHistoricalData = true;
-          break; // Stop at first found historical data
-        }
-      }
-      setHasHistoricalData(hasAnyHistoricalData);
-      
-    } catch (error) {
-      console.error('Failed to check navigation availability:', error);
-      setHasOlderData(false);
-      setHasNewerData(weekOffset < 0); // Keep right arrow logic even on error
-      setHasHistoricalData(false);
-    }
-  };
-
-  const navigateWeek = (direction: 'prev' | 'next') => {
+  // Navigation functions for new week-based system
+  const navigateWeek = async (direction: 'prev' | 'next') => {
+    let targetWeek: number;
+    
     if (direction === 'prev') {
-      setWeekOffset(weekOffset - 1);
-    } else if (direction === 'next' && hasNewerData) {
-      setWeekOffset(weekOffset + 1);
+      targetWeek = displayedWeek - 1;
+      if (targetWeek < 1) return; // Can't go before first week
+    } else {
+      targetWeek = displayedWeek + 1;
+      if (targetWeek > currentWeekNumber) return; // Can't go beyond current week
     }
+    
+    // Load target week data
+    const weekData = await getWeekData(targetWeek);
+    setCurrentWeekData(weekData);
+    setDisplayedWeek(targetWeek);
   };
 
-  const navigateToCurrentWeek = () => {
-    setWeekOffset(0);
+  const navigateToCurrentWeek = async () => {
+    if (displayedWeek === currentWeekNumber) return;
+    
+    const weekData = await getWeekData(currentWeekNumber);
+    setCurrentWeekData(weekData);
+    setDisplayedWeek(currentWeekNumber);
   };
 
   const navigateToFirstWeek = async () => {
-    // Find the earliest week with data
-    for (let i = 1; i <= 20; i++) { // Check up to 20 weeks back
-      const checkWeekResponse = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${-i}`);
-      const nextWeekResponse = await axios.get(`${API_BASE}/daily-summaries?weekOffset=${-i - 1}`);
-      if (checkWeekResponse.data.length > 0 && nextWeekResponse.data.length === 0) {
-        setWeekOffset(-i);
-        break;
-      }
-    }
+    if (displayedWeek === 1) return;
+    
+    const weekData = await getWeekData(1);
+    setCurrentWeekData(weekData);
+    setDisplayedWeek(1);
   };
 
   const generateWeekDays = () => {
-    // Use user's local timezone automatically with week offset
-    const today = new Date();
-    const monday = new Date(today);
-    // Get Monday of current week in user's local timezone
-    const dayOfWeek = today.getDay();
-    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Sunday = 0, so we need -6, otherwise 1-dayOfWeek
-    monday.setDate(today.getDate() + diff + (weekOffset * 7));
+    if (!firstRecordDate) return [];
+    
+    const firstDate = new Date(firstRecordDate);
+    const firstMonday = getMondayOfWeek(firstDate);
+    
+    // Calculate Monday of the displayed week
+    const displayedMonday = new Date(firstMonday);
+    displayedMonday.setDate(firstMonday.getDate() + ((displayedWeek - 1) * 7));
     
     const weekDays = [];
     for (let i = 0; i < 7; i++) {
-      const day = new Date(monday);
-      day.setDate(monday.getDate() + i);
+      const day = new Date(displayedMonday);
+      day.setDate(displayedMonday.getDate() + i);
       weekDays.push(day);
     }
     return weekDays;
@@ -125,7 +308,7 @@ const WeeklyChart: React.FC = () => {
 
   // Get max jumps for scaling
   const actualMaxJumps = Math.max(...weekDays.map(day => {
-    const dayData = weeklyData.find(d => 
+    const dayData = currentWeekData.find(d => 
       new Date(d.date).toDateString() === day.toDateString()
     );
     return dayData ? dayData.totalJumps : 0;
@@ -159,7 +342,7 @@ const WeeklyChart: React.FC = () => {
   return (
     <div className="weekly-chart">
       <div className="chart-header">
-        {(hasOlderData || weekOffset === 0) && (
+        {displayedWeek > 1 && (
           <button 
             className="nav-arrow left" 
             onClick={() => navigateWeek('prev')}
@@ -168,7 +351,7 @@ const WeeklyChart: React.FC = () => {
           </button>
         )}
         <h3 className="chart-title">Weekly Progress</h3>
-        {hasNewerData && (
+        {displayedWeek < currentWeekNumber && (
           <button 
             className="nav-arrow right" 
             onClick={() => navigateWeek('next')}
@@ -188,18 +371,11 @@ const WeeklyChart: React.FC = () => {
         <div className="chart-container">
           <div className="bars-container">
             {weekDays.map((day, index) => {
-              const dayData = weeklyData.find(d => 
+              const dayData = currentWeekData.find(d => 
                 new Date(d.date).toDateString() === day.toDateString()
               );
               const jumps = dayData ? dayData.totalJumps : 0;
               const height = yAxisMax > 0 ? (jumps / yAxisMax) * 100 : 0;
-              
-              console.log(`Day ${index}:`, {
-                day: day.toDateString(),
-                dayData,
-                jumps,
-                height
-              });
 
               return (
                 <div key={index} className="bar-item">
@@ -228,12 +404,12 @@ const WeeklyChart: React.FC = () => {
       
       {/* Navigation buttons */}
       <div className="chart-navigation">
-        {weekOffset < 0 && (
+        {displayedWeek !== currentWeekNumber && (
           <button className="nav-btn current-week" onClick={navigateToCurrentWeek}>
             Current Week
           </button>
         )}
-        {hasHistoricalData && weekOffset > -10 && ( // Don't show if already at oldest possible week
+        {totalWeeksAvailable > 1 && displayedWeek !== 1 && (
           <button className="nav-btn first-week" onClick={navigateToFirstWeek}>
             First Week
           </button>

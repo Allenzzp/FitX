@@ -197,29 +197,41 @@ export class RepPatternsManager {
         console.log('Qualified patterns (freq >= 3):', qualifiedPatterns);
 
         if (qualifiedPatterns.length === 0) {
-          // No new qualified patterns - keep existing
+          // No new qualified patterns - keep existing DB patterns
+          console.log('No qualified patterns, keeping existing DB patterns:', currentDbPatterns);
           topThree = currentDbPatterns;
-        } else if (qualifiedPatterns.length <= 3) {
-          topThree = qualifiedPatterns
-            .map(([rep]) => parseInt(rep))
-            .sort((a, b) => a - b);
         } else {
-          // More than 3 qualified - select best 3
-          const highestFreq = qualifiedPatterns[0][1];
-          const tiedPatterns = qualifiedPatterns.filter(([, freq]) => freq === highestFreq);
+          // Bug 4 fix: Include existing DB patterns and merge with new qualified patterns
+          console.log('Merging existing DB patterns with new qualified patterns');
           
-          if (tiedPatterns.length > 3) {
-            topThree = tiedPatterns
-              .sort(([a], [b]) => parseInt(a) - parseInt(b))
-              .slice(0, 3)
-              .map(([rep]) => parseInt(rep))
-              .sort((a, b) => a - b);
-          } else {
-            topThree = qualifiedPatterns
-              .slice(0, 3)
-              .map(([rep]) => parseInt(rep))
-              .sort((a, b) => a - b);
-          }
+          // Create a frequency map that includes both current DB patterns and qualified new patterns
+          const mergedPatterns = new Map<number, number>();
+          
+          // Add existing DB patterns (they should have higher weight since they're established)
+          currentDbPatterns.forEach(rep => {
+            const currentFreq = allPatterns.find(([r]) => parseInt(r) === rep)?.[1] || 5; // Give established patterns high weight
+            mergedPatterns.set(rep, currentFreq);
+          });
+          
+          // Add new qualified patterns
+          qualifiedPatterns.forEach(([rep, freq]) => {
+            const repNum = parseInt(rep);
+            // Only replace if this new pattern has higher frequency than existing
+            if (!mergedPatterns.has(repNum) || mergedPatterns.get(repNum)! < freq) {
+              mergedPatterns.set(repNum, freq);
+            }
+          });
+          
+          // Sort merged patterns by frequency (desc) then by rep count (asc) and take top 3
+          const sortedMerged = Array.from(mergedPatterns.entries())
+            .sort(([repA, freqA], [repB, freqB]) => {
+              if (freqB !== freqA) return freqB - freqA; // Higher frequency first
+              return repA - repB; // Lower rep count as tiebreaker
+            })
+            .slice(0, 3);
+            
+          topThree = sortedMerged.map(([rep]) => rep).sort((a, b) => a - b);
+          console.log('Final merged top 3:', topThree);
         }
       }
 
@@ -228,6 +240,8 @@ export class RepPatternsManager {
       
       if (topThree.length > 0) {
         console.log('Syncing to database...');
+        console.log('Request payload:', { topThreeReps: topThree });
+        
         const response = await axios.put(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`, {
           topThreeReps: topThree
         });
@@ -236,6 +250,7 @@ export class RepPatternsManager {
         console.log('Successfully synced new top 3 patterns to DB:', topThree);
       } else {
         console.log('No patterns to sync (topThree is empty)');
+        console.log('This could be why only 1 rep is showing in DB - no patterns qualified for sync');
       }
 
     } catch (error) {
@@ -278,5 +293,16 @@ export class RepPatternsManager {
    */
   getCurrentPatterns(): RepPatterns {
     return { ...this.patterns };
+  }
+
+  /**
+   * Get all rep patterns from localStorage for UI display (Bug 1 fix)
+   * Returns all localStorage keys (both DB patterns and session patterns) sorted ascending
+   */
+  getAllLocalStorageReps(): number[] {
+    return Object.keys(this.patterns)
+      .filter(rep => parseInt(rep) !== 100) // Exclude default 100
+      .map(rep => parseInt(rep))
+      .sort((a, b) => a - b); // Sort ascending for UI display
   }
 }

@@ -295,7 +295,7 @@
   margin-top: 30px;
   text-align: center;
   display: flex;
-  gap: 15px;
+  gap: 20px; /* Increased gap for better mobile spacing */
   justify-content: center;
   width: 100%;
   flex-wrap: wrap;
@@ -305,15 +305,15 @@
 .pause-workout-btn,
 .resume-workout-btn {
   border: none;
-  padding: 14px 28px;
-  border-radius: 10px;
-  font-size: 1rem;
+  padding: 16px 32px; /* Increased padding for better mobile touch targets */
+  border-radius: 12px; /* Slightly larger border radius */
+  font-size: 1.1rem; /* Slightly larger font for better readability */
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s ease;
   flex: 1;
   max-width: 300px;
-  min-width: 140px;
+  min-width: 150px; /* Increased minimum width for better spacing */
   color: white;
 }
 
@@ -811,10 +811,10 @@
 /* Quick Rep Options Styles */
 .quick-rep-options {
   display: flex;
-  gap: 10px;
+  gap: 15px; /* Increased gap for better mobile spacing */
   justify-content: center;
-  margin-top: 15px;
-  margin-bottom: 15px;
+  margin-top: 20px; /* Increased margin for better separation */
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
@@ -822,13 +822,13 @@
   background: linear-gradient(180deg, #f2f2f7 0%, #e5e5ea 100%);
   color: #2C2C2E;
   border: 1px solid #d1d1d6;
-  padding: 10px 18px;
-  border-radius: 16px;
-  font-size: 1rem;
+  padding: 14px 22px; /* Increased padding for larger touch targets */
+  border-radius: 18px; /* Slightly larger border radius */
+  font-size: 1.1rem; /* Larger font size for better mobile readability */
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  min-width: 60px;
+  min-width: 70px; /* Increased minimum width */
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   letter-spacing: -0.01em;
 }
@@ -875,14 +875,27 @@
 /* Mobile responsive for quick rep options */
 @media (max-width: 480px) {
   .quick-rep-options {
-    gap: 8px;
-    margin-top: 12px;
-    margin-bottom: 12px;
+    gap: 12px; /* Better spacing on mobile */
+    margin-top: 16px;
+    margin-bottom: 16px;
   }
   
   .quick-rep-btn {
-    padding: 8px 14px;
-    font-size: 0.9rem;
-    min-width: 50px;
+    padding: 12px 18px; /* Larger touch targets for mobile */
+    font-size: 1rem; /* Maintain readable size */
+    min-width: 65px; /* Better minimum width */
+  }
+  
+  .session-controls {
+    gap: 16px; /* Better gap for mobile */
+    margin-top: 25px;
+  }
+  
+  .end-workout-btn,
+  .pause-workout-btn,
+  .resume-workout-btn {
+    padding: 18px 24px; /* Even larger touch targets */
+    font-size: 1rem;
+    min-width: 140px;
   }
 }

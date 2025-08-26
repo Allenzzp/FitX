@@ -160,9 +160,10 @@ const WorkoutTracker: React.FC = () => {
   };
 
   const updateQuickRepOptions = () => {
-    const options = repPatternsManager.getTopThreePatterns();
+    // Bug 1 fix: Show all localStorage keys instead of just top 3
+    const options = repPatternsManager.getAllLocalStorageReps();
     setQuickRepOptions(options);
-    console.log('Updated quick rep options:', options);
+    console.log('Updated quick rep options (all localStorage keys):', options);
   };
 
   const trackGoalUsage = async (goal: number) => {
