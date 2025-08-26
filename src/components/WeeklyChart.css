@@ -180,21 +180,52 @@
   color: #2C2C2E;
   text-align: center;
   white-space: nowrap;
-  position: absolute;
-  top: -1rem;
-  left: 50%;
-  transform: translateX(-50%);
   background: white;
   padding: 0 0.25rem;
+}
+
+.bar-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  width: 80%;
+  max-width: 2rem;
+  position: relative;
+}
+
+/* For backward compatibility with single bars */
+.bar-container .bar:not(.bar-real):not(.bar-testing) {
+  width: 80%;
+  max-width: 2rem;
 }
 
 .bar {
   width: 80%;
   max-width: 2rem;
-  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
-  border-radius: 0.25rem 0.25rem 0 0;
   transition: all 0.3s ease;
   position: relative;
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
+  border-radius: 0.25rem 0.25rem 0 0;
+}
+
+.bar-real {
+  background: linear-gradient(180deg, #81D8D0 0%, #6BC5BD 100%);
+  border-radius: 0.25rem 0.25rem 0 0;
+}
+
+.bar-testing {
+  background: linear-gradient(180deg, #FFB84D 0%, #FF9500 100%);
+  border-radius: 0.25rem 0.25rem 0 0;
+}
+
+/* When bars are stacked, only the top bar should have top corners */
+.bar-container:has(.bar-testing) .bar-real {
+  border-radius: 0;
+}
+
+/* Stacked bars use full width within their container */
+.bar-stack .bar {
+  width: 100%;
 }
 
 .bar .bar-value-top {
@@ -369,7 +400,7 @@
     height: calc(14rem - 2px);
   }
   
-  .bar {
+  .bar-stack {
     max-width: 2.5rem;
   }
   

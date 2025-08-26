@@ -26,6 +26,7 @@ interface DailySummary {
   date: string;
   totalJumps: number;
   sessionsCount: number;
+  testing?: boolean;
 }
 
 const WorkoutTracker: React.FC = () => {

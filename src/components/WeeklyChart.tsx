@@ -7,6 +7,7 @@ interface DailySummary {
   date: string;
   totalJumps: number;
   sessionsCount: number;
+  testing?: boolean;
 }
 
 interface WeekData {
@@ -306,12 +307,17 @@ const WeeklyChart: React.FC = () => {
   const weekDays = generateWeekDays();
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-  // Get max jumps for scaling
+  // Get max jumps for scaling (consider both real and testing data)
   const actualMaxJumps = Math.max(...weekDays.map(day => {
-    const dayData = currentWeekData.find(d => 
-      new Date(d.date).toDateString() === day.toDateString()
+    const realData = currentWeekData.find(d => 
+      new Date(d.date).toDateString() === day.toDateString() && !d.testing
     );
-    return dayData ? dayData.totalJumps : 0;
+    const testingData = currentWeekData.find(d => 
+      new Date(d.date).toDateString() === day.toDateString() && d.testing
+    );
+    const realJumps = realData ? realData.totalJumps : 0;
+    const testingJumps = testingData ? testingData.totalJumps : 0;
+    return realJumps + testingJumps;
   }), 0);
 
   // Calculate Y-axis max: floor(max/1000) * 1000 + 1000
@@ -371,23 +377,57 @@ const WeeklyChart: React.FC = () => {
         <div className="chart-container">
           <div className="bars-container">
             {weekDays.map((day, index) => {
-              const dayData = currentWeekData.find(d => 
-                new Date(d.date).toDateString() === day.toDateString()
+              // Separate real and testing data for this day
+              const realData = currentWeekData.find(d => 
+                new Date(d.date).toDateString() === day.toDateString() && !d.testing
               );
-              const jumps = dayData ? dayData.totalJumps : 0;
-              const height = yAxisMax > 0 ? (jumps / yAxisMax) * 100 : 0;
+              const testingData = currentWeekData.find(d => 
+                new Date(d.date).toDateString() === day.toDateString() && d.testing
+              );
+              
+              const realJumps = realData ? realData.totalJumps : 0;
+              const testingJumps = testingData ? testingData.totalJumps : 0;
+              const totalJumps = realJumps + testingJumps;
+              
+              const realHeight = yAxisMax > 0 ? (realJumps / yAxisMax) * 100 : 0;
+              const testingHeight = yAxisMax > 0 ? (testingJumps / yAxisMax) * 100 : 0;
 
               return (
                 <div key={index} className="bar-item">
                   <div className="bar-container">
-                    {jumps > 0 && (
+                    {/* Real data bar (starts from bottom) */}
+                    {realJumps > 0 && (
                       <div 
-                        className="bar"
-                        style={{ height: `${height}%` }}
+                        className="bar bar-real"
+                        style={{ height: `${realHeight}%` }}
+                      />
+                    )}
+                    {/* Testing data bar (positioned on top of real bar) */}
+                    {testingJumps > 0 && (
+                      <div 
+                        className="bar bar-testing"
+                        style={{ 
+                          height: `${testingHeight}%`,
+                          position: 'absolute',
+                          bottom: realJumps > 0 ? `${realHeight}%` : '0%',
+                          left: '50%',
+                          transform: 'translateX(-50%)'
+                        }}
+                      />
+                    )}
+                    {/* Total value label - positioned on top of highest bar */}
+                    {totalJumps > 0 && (
+                      <div 
+                        className="bar-value-top"
+                        style={{
+                          position: 'absolute',
+                          bottom: `${realHeight + testingHeight}%`,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          marginBottom: '0.25rem'
+                        }}
                       >
-                        <div className="bar-value-top">
-                          {jumps.toLocaleString()}
-                        </div>
+                        {totalJumps.toLocaleString()}
                       </div>
                     )}
                   </div>

@@ -278,9 +278,11 @@ exports.handler = async (event, context) => {
         const summaryData = JSON.parse(body);
         const targetDate = parseDate(summaryData.date);
         
-        // Check if summary already exists for this date
+        // Check if summary already exists for this date and testing status
+        const testing = summaryData.testing === true;
         const existing = await collection.findOne({
-          date: targetDate
+          date: targetDate,
+          testing: testing
         });
         
         if (existing) {
@@ -313,7 +315,7 @@ exports.handler = async (event, context) => {
             date: targetDate,
             totalJumps: summaryData.totalJumps || 0,
             sessionsCount: summaryData.sessionsCount || 0,
-            testing: summaryData.testing || false,
+            testing: testing,
             createdAt: summaryData.createdAt ? new Date(summaryData.createdAt) : getCurrentTime(),
             updatedAt: summaryData.updatedAt ? new Date(summaryData.updatedAt) : getCurrentTime()
           };
