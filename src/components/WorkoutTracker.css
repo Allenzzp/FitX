@@ -26,6 +26,23 @@
   text-align: center;
 }
 
+.section-question {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #2C2C2E;
+  margin-bottom: 40px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.completion-time {
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: #666;
+  margin: 10px 0;
+  text-align: center;
+}
+
 .goal-input-container {
   display: flex;
   flex-direction: column;
@@ -90,6 +107,56 @@
     0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
+/* Two-column goal and timer layout */
+.goal-timer-setup {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 60px;
+  margin: 40px 0;
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.goal-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 200px;
+}
+
+.timer-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+/* Responsive design for two-column layout */
+@media (max-width: 600px) {
+  .goal-timer-setup {
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+    margin: 30px 0;
+  }
+  
+  .goal-column {
+    width: 100%;
+    min-width: unset;
+  }
+  
+  .timer-column {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .progress-display {
   text-align: center;
   width: 100%;
@@ -104,6 +171,95 @@
   margin-bottom: 20px;
   line-height: 1;
   letter-spacing: -0.02em;
+}
+
+/* Timer display styles */
+.timer-display {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.timer-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #666;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.timer-value {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #8BC3AF;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  letter-spacing: 0.1em;
+}
+
+.timer-value.overtime {
+  color: #FF6B47;
+}
+
+.timer-value.warning {
+  color: #FF9500;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Timer modal specific styles */
+.timer-modal {
+  text-align: center;
+  max-width: 400px;
+}
+
+.timer-modal h3 {
+  color: #FF9500;
+  font-size: 1.5rem;
+  margin-bottom: 16px;
+}
+
+.timer-modal p {
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.continue-btn {
+  background: linear-gradient(180deg, #FF9500 0%, #E6850E 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 0 8px;
+  transition: all 0.2s ease;
+}
+
+.continue-btn:hover {
+  background: linear-gradient(180deg, #E6850E 0%, #CC750C 100%);
+  transform: translateY(-1px);
+}
+
+.finish-btn {
+  background: linear-gradient(180deg, #8BC3AF 0%, #6BB5A1 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 0 8px;
+  transition: all 0.2s ease;
+}
+
+.finish-btn:hover {
+  background: linear-gradient(180deg, #6BB5A1 0%, #5A9F91 100%);
+  transform: translateY(-1px);
 }
 
 .remaining-label {
@@ -614,6 +770,10 @@
   .welcome-text {
     font-size: 2.5rem;
     margin-bottom: 60px;
+  }
+  
+  .section-question {
+    font-size: 1.4rem;
   }
   
   .goal-input-container {

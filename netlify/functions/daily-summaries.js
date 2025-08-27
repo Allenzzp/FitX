@@ -292,7 +292,8 @@ exports.handler = async (event, context) => {
             { 
               $inc: { 
                 totalJumps: summaryData.totalJumps || 0,
-                sessionsCount: summaryData.sessionsCount || 0
+                sessionsCount: summaryData.sessionsCount || 0,
+                totalWorkoutMinutes: summaryData.totalWorkoutMinutes || 0  // New field increment
               },
               $set: {
                 updatedAt: summaryData.updatedAt ? new Date(summaryData.updatedAt) : getCurrentTime()
@@ -315,6 +316,7 @@ exports.handler = async (event, context) => {
             date: targetDate,
             totalJumps: summaryData.totalJumps || 0,
             sessionsCount: summaryData.sessionsCount || 0,
+            totalWorkoutMinutes: summaryData.totalWorkoutMinutes || 0,  // New field for workout time tracking
             testing: testing,
             createdAt: summaryData.createdAt ? new Date(summaryData.createdAt) : getCurrentTime(),
             updatedAt: summaryData.updatedAt ? new Date(summaryData.updatedAt) : getCurrentTime()
@@ -346,6 +348,7 @@ exports.handler = async (event, context) => {
             date: updateDate,
             totalJumps: updateData.totalJumps,
             sessionsCount: updateData.sessionsCount,
+            totalWorkoutMinutes: updateData.totalWorkoutMinutes || 0,  // New field
             createdAt: updateData.createdAt || getCurrentTime(),
             updatedAt: getCurrentTime()
           },

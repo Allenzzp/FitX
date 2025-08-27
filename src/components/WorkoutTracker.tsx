@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import WeeklyChart from './WeeklyChart';
+import TimerPicker from './TimerPicker';
 import { RepPatternsManager } from '../utils/repPatternsManager';
 import './WorkoutTracker.css';
 
@@ -14,6 +15,11 @@ interface TrainingSession {
   pausedAt: string | null;
   lastActivityAt: string;
   actualWorkoutDuration: number;
+  // Timer fields
+  sessionLen?: number;     // Target duration in seconds
+  remainTime?: number;     // Remaining time in seconds
+  timerExpired?: boolean;  // Has timer expired
+  extraTime?: number;      // Overtime in seconds
   testing?: boolean;
   trainingSegments: {
     start: string;
@@ -26,6 +32,7 @@ interface DailySummary {
   date: string;
   totalJumps: number;
   sessionsCount: number;
+  totalWorkoutMinutes?: number;  // New field for workout time
   testing?: boolean;
 }
 
@@ -57,9 +64,92 @@ const WorkoutTracker: React.FC = () => {
   const [clickedButton, setClickedButton] = useState<number | null>(null);
   const [isRepInputFocused, setIsRepInputFocused] = useState(false);
   const [isInteractingWithButtons, setIsInteractingWithButtons] = useState(false);
+  const [timerMinutes, setTimerMinutes] = useState<number>(60); // Default 60 minutes
+  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showTimerExpiredModal, setShowTimerExpiredModal] = useState(false);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
+  // Helper function to calculate workout minutes from session timer data
+  const calculateWorkoutMinutes = (session: TrainingSession): number => {
+    if (!session.sessionLen) {
+      // No timer was set for this session, return 0
+      return 0;
+    }
+    
+    if (session.timerExpired && session.extraTime) {
+      // Session went overtime: sessionLen + extraTime
+      return Math.round((session.sessionLen + session.extraTime) / 60);
+    } else {
+      // Session completed within time: sessionLen - remainTime
+      const remainingSeconds = session.remainTime || 0;
+      return Math.round((session.sessionLen - remainingSeconds) / 60);
+    }
+  };
+
+  // Helper function to format seconds into MM:SS display
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(Math.abs(seconds) / 60);
+    const secs = Math.abs(seconds) % 60;
+    const sign = seconds < 0 ? '+' : ''; // Show + for overtime
+    return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Start countdown timer
+  const startCountdownTimer = (sessionId: string) => {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+    }
+
+    const interval = setInterval(async () => {
+      setCurrentSession((prevSession) => {
+        if (!prevSession || !prevSession.sessionLen || prevSession.status !== 'active') {
+          return prevSession;
+        }
+
+        const currentRemainTime = prevSession.remainTime || 0;
+        
+        if (!prevSession.timerExpired && currentRemainTime > 0) {
+          // Normal countdown
+          const newRemainTime = currentRemainTime - 1;
+          
+          if (newRemainTime <= 0) {
+            // Timer just expired
+            setShowTimerExpiredModal(true);
+            return {
+              ...prevSession,
+              remainTime: 0,
+              timerExpired: true
+            };
+          }
+          
+          return {
+            ...prevSession,
+            remainTime: newRemainTime
+          };
+        } else if (prevSession.timerExpired) {
+          // Overtime counting
+          const currentExtraTime = prevSession.extraTime || 0;
+          return {
+            ...prevSession,
+            extraTime: currentExtraTime + 1
+          };
+        }
+        
+        return prevSession;
+      });
+    }, 1000);
+
+    setTimerInterval(interval);
+  };
+
+  // Stop countdown timer
+  const stopCountdownTimer = () => {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      setTimerInterval(null);
+    }
+  };
 
   useEffect(() => {
     // Run backup cleanup check first, then check for session recovery and fetch current session
@@ -77,6 +167,11 @@ const WorkoutTracker: React.FC = () => {
         console.error('Failed to initialize rep patterns:', error);
       }
     });
+    
+    // Cleanup function
+    return () => {
+      stopCountdownTimer();
+    };
   }, []);
 
   const toggleTestingMode = async () => {
@@ -279,6 +374,10 @@ const WorkoutTracker: React.FC = () => {
         // Start auto-pause timer if session is active
         if (response.data.status === "active") {
           startAutoPauseTimer(response.data._id);
+          // Start countdown timer if session has timer
+          if (response.data.sessionLen) {
+            startCountdownTimer(response.data._id);
+          }
         }
         // Save session to localStorage for recovery
         saveSessionToLocalStorage(response.data);
@@ -338,6 +437,7 @@ const WorkoutTracker: React.FC = () => {
       const now = new Date();
       const response = await axios.post(`${API_BASE}/training-sessions`, {
         goal: goal,
+        sessionLen: timerMinutes * 60, // Convert minutes to seconds
         testing: isTestingMode,
         startTime: now.toISOString(),
         createdAt: now.toISOString()
@@ -346,6 +446,10 @@ const WorkoutTracker: React.FC = () => {
       setLastSyncPoint(0); // Reset sync point for new session
       // Start auto-pause timer for new session
       startAutoPauseTimer(response.data._id);
+      // Start countdown timer if session has timer
+      if (response.data.sessionLen) {
+        startCountdownTimer(response.data._id);
+      }
       // Save new session to localStorage
       saveSessionToLocalStorage(response.data);
       // Check for test data after session creation (to show delete button immediately)
@@ -424,10 +528,16 @@ const WorkoutTracker: React.FC = () => {
         // Final sync: update progress AND end session in one operation
         try {
           const now = new Date();
-          await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+          const finalSyncResponse = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
             action: 'finalSync',
             completed: newCompleted,
-            endTime: now.toISOString()
+            endTime: now.toISOString(),
+            // Include final timer state if timer was active
+            ...(currentSession.sessionLen && {
+              remainTime: currentSession.remainTime,
+              timerExpired: currentSession.timerExpired,
+              extraTime: currentSession.extraTime
+            })
           });
           
           // Create daily summary with correct final count
@@ -435,10 +545,15 @@ const WorkoutTracker: React.FC = () => {
           const localDate = today.toLocaleDateString("en-CA");
           // Create timezone-aware date that preserves the local date
           const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+          // Calculate workout minutes from the updated session
+          const updatedSession = finalSyncResponse.data;
+          const workoutMinutes = calculateWorkoutMinutes(updatedSession);
+          
           await axios.post(`${API_BASE}/daily-summaries`, {
             date: localMidnight,
             totalJumps: newCompleted,
             sessionsCount: 1,
+            totalWorkoutMinutes: workoutMinutes,
             testing: isTestingMode,
             createdAt: today.toISOString(),
             updatedAt: today.toISOString()
@@ -567,12 +682,19 @@ const WorkoutTracker: React.FC = () => {
       }
       
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
-        action: 'pause'
+        action: 'pause',
+        // Include timer state when pausing
+        ...(currentSession.sessionLen && {
+          remainTime: currentSession.remainTime,
+          timerExpired: currentSession.timerExpired,
+          extraTime: currentSession.extraTime
+        })
       });
       setCurrentSession(response.data);
       // Update localStorage with paused status
       saveSessionToLocalStorage(response.data);
       clearAutoPauseTimer(); // Stop auto-pause timer when manually paused
+      stopCountdownTimer(); // Stop countdown timer when paused
     } catch (error) {
       console.error('Failed to pause workout:', error);
     }
@@ -590,6 +712,10 @@ const WorkoutTracker: React.FC = () => {
       saveSessionToLocalStorage(response.data);
       // Start auto-pause timer when resuming
       startAutoPauseTimer(response.data._id);
+      // Restart countdown timer if session has timer
+      if (response.data.sessionLen) {
+        startCountdownTimer(response.data._id);
+      }
     } catch (error) {
       console.error('Failed to resume workout:', error);
     }
@@ -610,9 +736,15 @@ const WorkoutTracker: React.FC = () => {
       const now = new Date();
       
       // End the session (for manual end workout button)
-      await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+      const endResponse = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'end',
-        endTime: now.toISOString()
+        endTime: now.toISOString(),
+        // Include final timer state if timer was active
+        ...(currentSession.sessionLen && {
+          remainTime: currentSession.remainTime,
+          timerExpired: currentSession.timerExpired,
+          extraTime: currentSession.extraTime
+        })
       });
       
       // Create daily summary with current progress
@@ -620,10 +752,15 @@ const WorkoutTracker: React.FC = () => {
       const localDate = today.toLocaleDateString("en-CA");
       // Create timezone-aware date that preserves the local date
       const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+      // Calculate workout minutes from the updated session
+      const updatedSession = endResponse.data;
+      const workoutMinutes = calculateWorkoutMinutes(updatedSession);
+      
       await axios.post(`${API_BASE}/daily-summaries`, {
         date: localMidnight,
         totalJumps: currentSession.completed,
         sessionsCount: 1,
+        totalWorkoutMinutes: workoutMinutes,
         testing: isTestingMode,
         createdAt: today.toISOString(),
         updatedAt: today.toISOString()
@@ -638,6 +775,8 @@ const WorkoutTracker: React.FC = () => {
       
       // Clear auto-pause timer when session ends
       clearAutoPauseTimer();
+      // Clear countdown timer when session ends
+      stopCountdownTimer();
       
       // Refresh test data status after session ends
       await checkForTestData();
@@ -755,6 +894,41 @@ const WorkoutTracker: React.FC = () => {
     );
   };
 
+  // Timer expired modal
+  const TimerExpiredModal = () => {
+    if (!showTimerExpiredModal || !currentSession) return null;
+    
+    const handleContinue = async () => {
+      setShowTimerExpiredModal(false);
+      // Timer is already expired and counting in overtime
+      // No need to update session state as it's already handled in the countdown logic
+    };
+
+    const handleFinish = async () => {
+      setShowTimerExpiredModal(false);
+      // End the current session
+      await endWorkout();
+    };
+
+    return (
+      <div className="modal-overlay">
+        <div className="modal-content timer-modal">
+          <h3>⏰ Time's Up!</h3>
+          <p>Your {Math.floor((currentSession.sessionLen || 0) / 60)}-minute timer has expired.</p>
+          <p>You can finish your session now or continue with overtime tracking.</p>
+          <div className="modal-actions">
+            <button className="continue-btn" onClick={handleContinue}>
+              Continue
+            </button>
+            <button className="finish-btn" onClick={handleFinish}>
+              End Training
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Completed workout view
   if (isWorkoutComplete && completedSession) {
     const isComplete = completedSession.completed >= completedSession.goal;
@@ -788,6 +962,7 @@ const WorkoutTracker: React.FC = () => {
         
         <WeeklyChart key={chartKey} />
         <DeleteConfirmModal />
+        <TimerExpiredModal />
       </div>
     );
   }
@@ -799,7 +974,6 @@ const WorkoutTracker: React.FC = () => {
         <div className="workout-container">
           <TestingControls />
           <div className="goal-setup">
-            <h1 className="welcome-text">What's your jump rope goal today?</h1>
             {commonGoals.length > 0 && (
               <div className="common-goals-container">
                 <div className="common-goals-label">Your common goals:</div>
@@ -822,56 +996,71 @@ const WorkoutTracker: React.FC = () => {
                 </div>
               </div>
             )}
-            <div className="goal-input-container">
-              <input
-                ref={goalInputRef}
-                type="text"
-                className={`goal-input ${goalInputError ? 'error' : ''} ${isDefaultGoal ? 'default-value' : ''}`}
-                value={isDefaultGoal ? '4000' : goalInput}
-                onFocus={() => {
-                  setIsGoalFocused(true);
-                  if (isDefaultGoal) {
-                    setGoalInput('');
-                    setIsDefaultGoal(false);
-                  }
-                  setGoalInputError('');
-                }}
-                onBlur={() => {
-                  setIsGoalFocused(false);
-                  if (goalInput === '') {
-                    setIsDefaultGoal(true);
-                    setGoalInputError('');
-                  }
-                }}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  const validation = validateIntegerInput(value, 20000);
-                  
-                  // Always update the input value (for immediate feedback)
-                  setGoalInput(value);
-                  
-                  // Clear error if input becomes valid, show error if invalid
-                  if (validation.isValid || value === '') {
-                    setGoalInputError('');
-                  } else {
-                    setGoalInputError(validation.error);
-                  }
-                }}
-                onKeyPress={handleKeyPress}
-                placeholder=""
-              />
-              <button className="set-goal-btn" onClick={setDailyGoal}>
-                Set Goal
-              </button>
-            </div>
-            {goalInputError && (
-              <div className="error-message">
-                {goalInputError}
+            
+            <div className="goal-timer-setup">
+              <div className="goal-column">
+                <h1 className="section-question">What's your goal today?</h1>
+                <div className="goal-input-container">
+                  <input
+                    ref={goalInputRef}
+                    type="text"
+                    className={`goal-input ${goalInputError ? 'error' : ''} ${isDefaultGoal ? 'default-value' : ''}`}
+                    value={isDefaultGoal ? '4000' : goalInput}
+                    onFocus={() => {
+                      setIsGoalFocused(true);
+                      if (isDefaultGoal) {
+                        setGoalInput('');
+                        setIsDefaultGoal(false);
+                      }
+                      setGoalInputError('');
+                    }}
+                    onBlur={() => {
+                      setIsGoalFocused(false);
+                      if (goalInput === '') {
+                        setIsDefaultGoal(true);
+                        setGoalInputError('');
+                      }
+                    }}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const validation = validateIntegerInput(value, 20000);
+                      
+                      // Always update the input value (for immediate feedback)
+                      setGoalInput(value);
+                      
+                      // Clear error if input becomes valid, show error if invalid
+                      if (validation.isValid || value === '') {
+                        setGoalInputError('');
+                      } else {
+                        setGoalInputError(validation.error);
+                      }
+                    }}
+                    onKeyPress={handleKeyPress}
+                    placeholder=""
+                  />
+                </div>
+                {goalInputError && (
+                  <div className="error-message">
+                    {goalInputError}
+                  </div>
+                )}
               </div>
-            )}
+              
+              <div className="timer-column">
+                <TimerPicker
+                  value={timerMinutes}
+                  onChange={setTimerMinutes}
+                />
+              </div>
+            </div>
+            
+            <button className="set-goal-btn" onClick={setDailyGoal}>
+              Set Goal
+            </button>
           </div>
           <WeeklyChart key={chartKey} />
           <DeleteConfirmModal />
+          <TimerExpiredModal />
         </div>
       );
     } else {
@@ -881,6 +1070,7 @@ const WorkoutTracker: React.FC = () => {
           <TestingControls />
           <div className="goal-setup">
             <h1 className="welcome-text">Goal: {(isDefaultGoal ? 4000 : parseInt(goalInput)).toLocaleString()} jumps</h1>
+            <p className="completion-time">Completion time: {timerMinutes} mins</p>
             <p className="ready-text">Ready to start today's workout?</p>
             <button className="start-btn" onClick={startWorkout}>
               Start Training
@@ -888,6 +1078,7 @@ const WorkoutTracker: React.FC = () => {
           </div>
           <WeeklyChart key={chartKey} />
           <DeleteConfirmModal />
+          <TimerExpiredModal />
         </div>
       );
     }
@@ -909,6 +1100,25 @@ const WorkoutTracker: React.FC = () => {
         <div className="main-number">
           {isComplete ? '🎉' : remaining.toLocaleString()}
         </div>
+        
+        {/* Timer Display */}
+        {currentSession.sessionLen && (
+          <div className="timer-display">
+            <div className="timer-label">
+              {currentSession.timerExpired ? 'Overtime' : 'Time Remaining'}
+            </div>
+            <div className={`timer-value ${
+              currentSession.timerExpired ? 'overtime' : 
+              (currentSession.remainTime || 0) <= 300 ? 'warning' : ''
+            }`}>
+              {currentSession.timerExpired 
+                ? formatTime(-(currentSession.extraTime || 0))
+                : formatTime(currentSession.remainTime || 0)
+              }
+            </div>
+          </div>
+        )}
+        
         <div className="progress-sync-container">
           <div className="goal-progress">
             {currentSession.completed.toLocaleString()} / {currentSession.goal.toLocaleString()}
@@ -1044,6 +1254,7 @@ const WorkoutTracker: React.FC = () => {
       
       <WeeklyChart key={chartKey} />
       <DeleteConfirmModal />
+      <TimerExpiredModal />
     </div>
   );
 };

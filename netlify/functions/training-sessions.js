@@ -88,6 +88,11 @@ exports.handler = async (event, context) => {
             start: now,
             end: null
           }],
+          // Timer fields
+          sessionLen: sessionData.sessionLen || null,  // Target duration in seconds
+          remainTime: sessionData.sessionLen || null,  // Remaining time in seconds (starts same as sessionLen)
+          timerExpired: false,                         // Default false
+          extraTime: 0,                               // Overtime in seconds, default 0
           testing: sessionData.testing || false,
           createdAt: sessionData.createdAt ? new Date(sessionData.createdAt) : getCurrentTime()
         };
@@ -143,10 +148,35 @@ exports.handler = async (event, context) => {
         if (updateData.action === 'updateProgress') {
           updateFields.completed = updateData.completed;
           updateFields.lastActivityAt = getCurrentTime();
+          // Update timer state if provided
+          if (updateData.remainTime !== undefined) {
+            updateFields.remainTime = updateData.remainTime;
+          }
+        } else if (updateData.action === 'updateTimer') {
+          // Timer-specific update (remaining time, expired state, extra time)
+          if (updateData.remainTime !== undefined) {
+            updateFields.remainTime = updateData.remainTime;
+          }
+          if (updateData.timerExpired !== undefined) {
+            updateFields.timerExpired = updateData.timerExpired;
+          }
+          if (updateData.extraTime !== undefined) {
+            updateFields.extraTime = updateData.extraTime;
+          }
         } else if (updateData.action === 'pause') {
           const now = updateData.pausedAt ? new Date(updateData.pausedAt) : getCurrentTime();
           updateFields.status = "paused";
           updateFields.pausedAt = now;
+          // Save timer state when pausing
+          if (updateData.remainTime !== undefined) {
+            updateFields.remainTime = updateData.remainTime;
+          }
+          if (updateData.timerExpired !== undefined) {
+            updateFields.timerExpired = updateData.timerExpired;
+          }
+          if (updateData.extraTime !== undefined) {
+            updateFields.extraTime = updateData.extraTime;
+          }
           // End current training segment
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
@@ -181,6 +211,16 @@ exports.handler = async (event, context) => {
           updateFields.status = "ended";
           updateFields.endTime = now;
           updateFields.pausedAt = null;
+          // Save final timer state
+          if (updateData.remainTime !== undefined) {
+            updateFields.remainTime = updateData.remainTime;
+          }
+          if (updateData.timerExpired !== undefined) {
+            updateFields.timerExpired = updateData.timerExpired;
+          }
+          if (updateData.extraTime !== undefined) {
+            updateFields.extraTime = updateData.extraTime;
+          }
           // End current training segment and calculate actual workout duration
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
@@ -200,6 +240,16 @@ exports.handler = async (event, context) => {
           updateFields.status = "ended";
           updateFields.endTime = now;
           updateFields.pausedAt = null;
+          // Save final timer state
+          if (updateData.remainTime !== undefined) {
+            updateFields.remainTime = updateData.remainTime;
+          }
+          if (updateData.timerExpired !== undefined) {
+            updateFields.timerExpired = updateData.timerExpired;
+          }
+          if (updateData.extraTime !== undefined) {
+            updateFields.extraTime = updateData.extraTime;
+          }
           // End current training segment and calculate actual workout duration
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
