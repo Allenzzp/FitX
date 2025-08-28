@@ -15,6 +15,7 @@
       "Read(/c:\\Users\\allen\\Desktop/**)",
       "Read(/c:\\Users\\allen\\Desktop/**)",
       "Read(c:\\Users\\allen\\Desktop/**)",
+      "Read(c:\\Users\\allen\\Desktop/**)",
       "Read(c:\\Users\\allen\\Desktop/**)"
     ],
     "deny": []

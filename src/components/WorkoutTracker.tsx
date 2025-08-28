@@ -67,6 +67,13 @@ const WorkoutTracker: React.FC = () => {
   const [timerMinutes, setTimerMinutes] = useState<number>(60); // Default 60 minutes
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const [showTimerExpiredModal, setShowTimerExpiredModal] = useState(false);
+  
+  // Separate timer state - independent from session state
+  const [timerState, setTimerState] = useState<{
+    remainTime: number;
+    timerExpired: boolean;
+    extraTime: number;
+  } | null>(null);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -95,21 +102,30 @@ const WorkoutTracker: React.FC = () => {
     return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Start countdown timer
-  const startCountdownTimer = (sessionId: string) => {
+  // Start countdown timer with separate state
+  const startCountdownTimer = (sessionId: string, initialTimerData?: { remainTime: number; timerExpired: boolean; extraTime: number }, sessionData?: TrainingSession) => {
     if (timerInterval) {
       clearInterval(timerInterval);
     }
 
+    // Initialize timer state if provided (for session recovery)
+    if (initialTimerData && !timerState) {
+      setTimerState(initialTimerData);
+    }
+
     const interval = setInterval(async () => {
-      setCurrentSession((prevSession) => {
-        if (!prevSession || !prevSession.sessionLen || prevSession.status !== 'active') {
-          return prevSession;
+      setTimerState((prevTimer) => {
+        // Use initialTimerData as fallback if prevTimer is not yet set
+        const currentTimer = prevTimer || initialTimerData;
+        // Use passed sessionData if available, otherwise fall back to currentSession
+        const session = sessionData || currentSession;
+        if (!currentTimer || !session?.status || session.status !== 'active') {
+          return prevTimer;
         }
 
-        const currentRemainTime = prevSession.remainTime || 0;
+        const currentRemainTime = currentTimer.remainTime;
         
-        if (!prevSession.timerExpired && currentRemainTime > 0) {
+        if (!currentTimer.timerExpired && currentRemainTime > 0) {
           // Normal countdown
           const newRemainTime = currentRemainTime - 1;
           
@@ -117,26 +133,25 @@ const WorkoutTracker: React.FC = () => {
             // Timer just expired
             setShowTimerExpiredModal(true);
             return {
-              ...prevSession,
+              ...currentTimer,
               remainTime: 0,
               timerExpired: true
             };
           }
           
           return {
-            ...prevSession,
+            ...currentTimer,
             remainTime: newRemainTime
           };
-        } else if (prevSession.timerExpired) {
+        } else if (currentTimer.timerExpired) {
           // Overtime counting
-          const currentExtraTime = prevSession.extraTime || 0;
           return {
-            ...prevSession,
-            extraTime: currentExtraTime + 1
+            ...currentTimer,
+            extraTime: currentTimer.extraTime + 1
           };
         }
         
-        return prevSession;
+        return prevTimer;
       });
     }, 1000);
 
@@ -167,12 +182,41 @@ const WorkoutTracker: React.FC = () => {
         console.error('Failed to initialize rep patterns:', error);
       }
     });
-    
+
     // Cleanup function
     return () => {
       stopCountdownTimer();
     };
-  }, []);
+  }, []);  // Remove currentSession dependency to prevent infinite loop
+
+  // Separate effect for beforeunload handler to access current state
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (currentSession?.status === 'active') {
+        // Use navigator.sendBeacon for reliable request during page unload
+        const pauseData = JSON.stringify({
+          action: 'pause',
+          // Include current timer state when auto-pausing on tab close
+          ...(timerState && {
+            remainTime: timerState.remainTime,
+            timerExpired: timerState.timerExpired,
+            extraTime: timerState.extraTime
+          })
+        });
+        
+        navigator.sendBeacon(
+          `${API_BASE}/training-sessions?id=${currentSession._id}`,
+          pauseData
+        );
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentSession, timerState]);
 
   const toggleTestingMode = async () => {
     const newMode = !isTestingMode;
@@ -375,17 +419,31 @@ const WorkoutTracker: React.FC = () => {
         setIsStarted(true);
         // Set sync point based on current progress for existing sessions
         setLastSyncPoint(Math.floor(response.data.completed / 500) * 500);
+        
+        // Initialize timer state from backend data ONLY if timer state doesn't already exist
+        if (response.data.sessionLen && !timerState) {
+          const initialTimerState = {
+            remainTime: response.data.remainTime || response.data.sessionLen,
+            timerExpired: response.data.timerExpired || false,
+            extraTime: response.data.extraTime || 0
+          };
+          setTimerState(initialTimerState);
+          
+          // Start countdown timer immediately if session is active
+          if (response.data.status === "active") {
+            // Use a small delay to ensure timer state is set
+            setTimeout(() => {
+              startCountdownTimer(response.data._id, initialTimerState);
+            }, 50);
+          }
+        } else if (response.data.sessionLen && timerState && response.data.status === "active") {
+          // Timer state exists but countdown might not be running - just start countdown
+          startCountdownTimer(response.data._id, timerState);
+        }
+        
         // Start auto-pause timer if session is active
         if (response.data.status === "active") {
           startAutoPauseTimer(response.data._id);
-          // Start countdown timer if session has timer, ensuring timer state is properly restored
-          if (response.data.sessionLen) {
-            startCountdownTimer(response.data._id);
-          }
-        } else if (response.data.status === "paused" && response.data.sessionLen) {
-          // For paused sessions with timers, we don't start the countdown but preserve the timer state
-          // Timer will resume when session is resumed
-          console.log('Paused session with timer recovered, timer state preserved');
         }
         // Save session to localStorage for recovery
         saveSessionToLocalStorage(response.data);
@@ -452,18 +510,27 @@ const WorkoutTracker: React.FC = () => {
       });
       setCurrentSession(response.data);
       setLastSyncPoint(0); // Reset sync point for new session
+      
+      // Initialize separate timer state for new session
+      if (response.data.sessionLen) {
+        setTimerState({
+          remainTime: response.data.sessionLen,
+          timerExpired: false,
+          extraTime: 0
+        });
+        startCountdownTimer(response.data._id, undefined, response.data);
+      }
+      
       // Start auto-pause timer for new session
       startAutoPauseTimer(response.data._id);
-      // Start countdown timer if session has timer
-      if (response.data.sessionLen) {
-        startCountdownTimer(response.data._id);
-      }
       // Save new session to localStorage
       saveSessionToLocalStorage(response.data);
       // Check for test data after session creation (to show delete button immediately)
       await checkForTestData();
-      // Track goal usage for common goals feature
-      await trackGoalUsage(goal);
+      // Track goal usage for common goals feature (non-blocking)
+      trackGoalUsage(goal).catch(error => {
+        console.log('Goal usage tracking failed (non-critical):', error.message);
+      });
     } catch (error) {
       console.error('Failed to start workout:', error);
     }
@@ -495,8 +562,15 @@ const WorkoutTracker: React.FC = () => {
       const newCompleted = currentSession.completed + reps;
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'updateProgress',
-        completed: newCompleted
+        completed: newCompleted,
+        // Backup timer state for crash resilience
+        ...(timerState && {
+          remainTime: timerState.remainTime,
+          timerExpired: timerState.timerExpired,
+          extraTime: timerState.extraTime
+        })
       });
+      // Clean session state update - no timer conflicts
       setCurrentSession(response.data);
       // Update localStorage with new progress
       saveSessionToLocalStorage(response.data);
@@ -512,7 +586,13 @@ const WorkoutTracker: React.FC = () => {
         try {
           await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
             action: 'updateProgress',
-            completed: newCompleted
+            completed: newCompleted,
+            // Backup timer state for crash resilience
+            ...(timerState && {
+              remainTime: timerState.remainTime,
+              timerExpired: timerState.timerExpired,
+              extraTime: timerState.extraTime
+            })
           });
           setNeedsSync(false); // Auto-sync completed, reset sync state
           setLastSyncPoint(Math.floor(newCompleted / 500) * 500); // Update sync point
@@ -541,10 +621,10 @@ const WorkoutTracker: React.FC = () => {
             completed: newCompleted,
             endTime: now.toISOString(),
             // Include final timer state if timer was active
-            ...(currentSession.sessionLen && {
-              remainTime: currentSession.remainTime,
-              timerExpired: currentSession.timerExpired,
-              extraTime: currentSession.extraTime
+            ...(currentSession.sessionLen && timerState && {
+              remainTime: timerState.remainTime,
+              timerExpired: timerState.timerExpired,
+              extraTime: timerState.extraTime
             })
           });
           
@@ -632,7 +712,13 @@ const WorkoutTracker: React.FC = () => {
     try {
       await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'updateProgress',
-        completed: currentSession.completed
+        completed: currentSession.completed,
+        // Backup timer state for crash resilience
+        ...(timerState && {
+          remainTime: timerState.remainTime,
+          timerExpired: timerState.timerExpired,
+          extraTime: timerState.extraTime
+        })
       });
       setNeedsSync(false); // Manual sync completed, reset sync state
       console.log('Manual sync completed');
@@ -691,11 +777,11 @@ const WorkoutTracker: React.FC = () => {
       
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'pause',
-        // Include timer state when pausing
-        ...(currentSession.sessionLen && {
-          remainTime: currentSession.remainTime,
-          timerExpired: currentSession.timerExpired,
-          extraTime: currentSession.extraTime
+        // Sync separate timer state to backend when pausing
+        ...(currentSession.sessionLen && timerState && {
+          remainTime: timerState.remainTime,
+          timerExpired: timerState.timerExpired,
+          extraTime: timerState.extraTime
         })
       });
       setCurrentSession(response.data);
@@ -722,10 +808,40 @@ const WorkoutTracker: React.FC = () => {
       startAutoPauseTimer(response.data._id);
       // Restart countdown timer if session has timer
       if (response.data.sessionLen) {
-        startCountdownTimer(response.data._id);
+        startCountdownTimer(response.data._id, undefined, response.data);
       }
     } catch (error) {
       console.error('Failed to resume workout:', error);
+    }
+  };
+
+  const resumeToLastActivity = async () => {
+    if (!currentSession) return;
+    
+    try {
+      // Calculate time to add back based on last activity
+      const lastSegment = currentSession.trainingSegments[currentSession.trainingSegments.length - 1];
+      const pausedAt = new Date(lastSegment.end!);
+      const lastActivityAt = new Date(currentSession.lastActivityAt);
+      const inactiveTimeSeconds = Math.floor((pausedAt.getTime() - lastActivityAt.getTime()) / 1000);
+      
+      // Resume with time compensation
+      const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+        action: 'resume',
+        // Add inactive time back to remaining time
+        compensateTime: inactiveTimeSeconds
+      });
+      setCurrentSession(response.data);
+      // Update localStorage with resumed status
+      saveSessionToLocalStorage(response.data);
+      // Start auto-pause timer when resuming
+      startAutoPauseTimer(response.data._id);
+      // Restart countdown timer if session has timer
+      if (response.data.sessionLen) {
+        startCountdownTimer(response.data._id, undefined, response.data);
+      }
+    } catch (error) {
+      console.error('Failed to resume to last activity:', error);
     }
   };
 
@@ -748,10 +864,10 @@ const WorkoutTracker: React.FC = () => {
         action: 'end',
         endTime: now.toISOString(),
         // Include final timer state if timer was active
-        ...(currentSession.sessionLen && {
-          remainTime: currentSession.remainTime,
-          timerExpired: currentSession.timerExpired,
-          extraTime: currentSession.extraTime
+        ...(currentSession.sessionLen && timerState && {
+          remainTime: timerState.remainTime,
+          timerExpired: timerState.timerExpired,
+          extraTime: timerState.extraTime
         })
       });
       
@@ -1110,18 +1226,18 @@ const WorkoutTracker: React.FC = () => {
         </div>
         
         {/* Timer Display */}
-        {currentSession.sessionLen && (
+        {currentSession.sessionLen && timerState && (
           <div className="timer-display">
             <div className="timer-label">
-              {currentSession.timerExpired ? 'Overtime' : 'Time Remaining'}
+              {timerState.timerExpired ? 'Overtime' : 'Time Remaining'}
             </div>
             <div className={`timer-value ${
-              currentSession.timerExpired ? 'overtime' : 
-              (currentSession.remainTime || 0) <= 300 ? 'warning' : ''
+              timerState.timerExpired ? 'overtime' : 
+              timerState.remainTime <= 300 ? 'warning' : ''
             }`}>
-              {currentSession.timerExpired 
-                ? formatTime(-(currentSession.extraTime || 0))
-                : formatTime(currentSession.remainTime || 0)
+              {timerState.timerExpired 
+                ? formatTime(-timerState.extraTime)
+                : formatTime(timerState.remainTime)
               }
             </div>
           </div>
@@ -1250,13 +1366,25 @@ const WorkoutTracker: React.FC = () => {
             </button>
           )}
           {currentSession.status === "paused" && (
-            <button className="resume-workout-btn" onClick={resumeWorkout}>
-              Resume Training
+            <>
+              <div className="primary-resume-controls">
+                <button className="resume-workout-btn" onClick={resumeWorkout}>
+                  Resume Training
+                </button>
+                <button className="end-workout-btn" onClick={endWorkout}>
+                  End Training
+                </button>
+              </div>
+              <button className="resume-to-activity-btn" onClick={resumeToLastActivity}>
+                Resume to Last Activity
+              </button>
+            </>
+          )}
+          {currentSession.status === "active" && (
+            <button className="end-workout-btn" onClick={endWorkout}>
+              End Training
             </button>
           )}
-          <button className="end-workout-btn" onClick={endWorkout}>
-            End Training
-          </button>
         </div>
       </div>
       

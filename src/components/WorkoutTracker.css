@@ -451,15 +451,24 @@
   margin-top: 30px;
   text-align: center;
   display: flex;
-  gap: 20px; /* Increased gap for better mobile spacing */
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+}
+
+/* Desktop: Primary resume controls in row, secondary below */
+.primary-resume-controls {
+  display: flex;
+  gap: 20px;
   justify-content: center;
   width: 100%;
-  flex-wrap: wrap;
 }
 
 .end-workout-btn,
 .pause-workout-btn,
-.resume-workout-btn {
+.resume-workout-btn,
+.resume-to-activity-btn {
   border: none;
   padding: 16px 32px; /* Increased padding for better mobile touch targets */
   border-radius: 12px; /* Slightly larger border radius */
@@ -495,6 +504,16 @@
 
 .resume-workout-btn:hover {
   background-color: #2db653;
+}
+
+.resume-to-activity-btn {
+  background-color: #007aff;
+  width: 100%;
+  max-width: 400px;
+}
+
+.resume-to-activity-btn:hover {
+  background-color: #0066cc;
 }
 
 .history-btn {
@@ -815,6 +834,23 @@
   
   .session-controls {
     margin-top: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  
+  .primary-resume-controls {
+    display: flex;
+    flex-direction: row;
+    gap: 30px;
+    justify-content: center;
+  }
+  
+  .resume-to-activity-btn {
+    width: auto;
+    max-width: none;
+    margin-left: calc(-150px - 15px); /* Move left to align with Resume Training left edge */
   }
   
   .ready-text {
@@ -1050,12 +1086,22 @@
     gap: 16px; /* Better gap for mobile */
     margin-top: 25px;
   }
+
+  /* Mobile: Stack all buttons vertically (Option M1) */
+  .primary-resume-controls {
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+  }
   
   .end-workout-btn,
   .pause-workout-btn,
-  .resume-workout-btn {
+  .resume-workout-btn,
+  .resume-to-activity-btn {
     padding: 18px 24px; /* Even larger touch targets */
     font-size: 1rem;
     min-width: 140px;
+    width: 100%; /* Full width on mobile */
+    max-width: none; /* Remove desktop max-width constraint */
   }
 }
