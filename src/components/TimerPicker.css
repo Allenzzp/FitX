@@ -11,7 +11,7 @@
 
 .timer-picker-container {
   position: relative;
-  width: 120px;
+  width: 180px;
   height: 160px;
   display: flex;
   align-items: center;
@@ -34,7 +34,7 @@
   height: 160px;
   overflow-y: scroll;
   overflow-x: hidden;
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: y proximity;  /* Changed from mandatory to proximity for smoother experience */
   -webkit-overflow-scrolling: touch;
   
   /* Hide scrollbar */
@@ -94,9 +94,9 @@
   z-index: 1;
 }
 
-/* Spacers for proper centering */
+/* Spacers for proper centering - 1.5x item height for proper centering */
 .timer-picker-spacer {
-  height: 60px;
+  height: 60px; /* 1.5 * 40px (desktop item height) */
   flex-shrink: 0;
 }
 
@@ -112,7 +112,7 @@
   cursor: pointer;
   flex-shrink: 0;
   scroll-snap-align: center;
-  scroll-snap-stop: always;
+  scroll-snap-stop: normal; /* Changed from always to normal for better scrolling */
   transition: all 0.2s ease;
   position: relative;
 }
@@ -130,7 +130,7 @@
 /* Unit label */
 .timer-picker-unit {
   position: absolute;
-  right: -35px;
+  right: -45px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 16px;
@@ -154,7 +154,7 @@
 /* Mobile responsive */
 @media (max-width: 480px) {
   .timer-picker-container {
-    width: 140px;
+    width: 200px;
     height: 140px;
   }
   
@@ -176,11 +176,11 @@
   }
   
   .timer-picker-spacer {
-    height: 52px;
+    height: 54px; /* 1.5 * 36px (mobile item height) for consistent centering */
   }
   
   .timer-picker-unit {
-    right: -30px;
+    right: -45px;
     font-size: 14px;
   }
   

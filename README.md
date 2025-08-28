@@ -4,6 +4,7 @@ A modern, full-stack fitness tracking application for jump rope enthusiasts. Set
 
 ## ✨ Features
 
+- **Session Timer with Overtime**: Set workout duration (10-70 min) with iOS-style picker and automatic overtime tracking when you exceed your target time
 - **Smart Rep Suggestions**: Learn your patterns and suggest your top 3 most-used rep counts as quick buttons
 - **Auto-Sync Every 500 Reps**: Never lose progress with intelligent background syncing
 - **Smart Session Management**: Auto-pause after 10 minutes to maintain workout intensity, auto-finish at midnight for fresh daily starts

@@ -187,7 +187,7 @@ const WorkoutTracker: React.FC = () => {
     try {
       const sessionData = localStorage.getItem('activeSession');
       if (sessionData) {
-        const { sessionId, timestamp, status } = JSON.parse(sessionData);
+        const { sessionId, timestamp, status, hasTimer } = JSON.parse(sessionData);
         const now = Date.now();
         const timeDiff = now - timestamp;
         const tenMinutes = 10 * 60 * 1000;
@@ -195,7 +195,10 @@ const WorkoutTracker: React.FC = () => {
         // If within 10 minutes and session was active, keep UI in active state
         // If more than 10 minutes or session was paused, will be handled by fetchCurrentSession
         if (timeDiff <= tenMinutes && status === 'active') {
-          console.log('Recovering active session within 10 minutes');
+          console.log('Recovering active session within 10 minutes', hasTimer ? 'with timer' : 'without timer');
+          setIsStarted(true);
+        } else if (status === 'paused') {
+          console.log('Recovering paused session', hasTimer ? 'with timer' : 'without timer');
           setIsStarted(true);
         }
       }
@@ -211,7 +214,8 @@ const WorkoutTracker: React.FC = () => {
       localStorage.setItem('activeSession', JSON.stringify({
         sessionId: session._id,
         timestamp: Date.now(),
-        status: session.status
+        status: session.status,
+        hasTimer: !!session.sessionLen // Track whether session has a timer
       }));
     } else {
       localStorage.removeItem('activeSession');
@@ -374,10 +378,14 @@ const WorkoutTracker: React.FC = () => {
         // Start auto-pause timer if session is active
         if (response.data.status === "active") {
           startAutoPauseTimer(response.data._id);
-          // Start countdown timer if session has timer
+          // Start countdown timer if session has timer, ensuring timer state is properly restored
           if (response.data.sessionLen) {
             startCountdownTimer(response.data._id);
           }
+        } else if (response.data.status === "paused" && response.data.sessionLen) {
+          // For paused sessions with timers, we don't start the countdown but preserve the timer state
+          // Timer will resume when session is resumed
+          console.log('Paused session with timer recovered, timer state preserved');
         }
         // Save session to localStorage for recovery
         saveSessionToLocalStorage(response.data);

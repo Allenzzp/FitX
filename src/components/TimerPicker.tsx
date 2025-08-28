@@ -11,6 +11,7 @@ const TimerPicker: React.FC<TimerPickerProps> = ({ value, onChange, disabled = f
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(false);
   const snapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Timer options: 1 minute for testing, then 10-70 in 10-minute increments
   const timerOptions = [1, 10, 20, 30, 40, 50, 60, 70];
@@ -49,17 +50,29 @@ const TimerPicker: React.FC<TimerPickerProps> = ({ value, onChange, disabled = f
     return () => window.removeEventListener('resize', checkIsMobile);
   }, []);
 
-  // Initialize scroll position
+  // Initialize scroll position with robust DOM-ready detection
   useEffect(() => {
     if (scrollContainerRef.current && currentIndex >= 0) {
-      // Longer delay to ensure DOM is ready on both mobile and desktop
-      setTimeout(() => {
-        snapToIndex(currentIndex, false);
-      }, 100);
+      const container = scrollContainerRef.current;
+      
+      // More robust initialization - check if container has proper dimensions
+      const initializePosition = () => {
+        if (container.scrollHeight > 0 && container.offsetHeight > 0) {
+          snapToIndex(currentIndex, false);
+        } else {
+          // Retry if container isn't ready
+          setTimeout(initializePosition, 50);
+        }
+      };
+      
+      // Use requestAnimationFrame for better timing
+      requestAnimationFrame(() => {
+        setTimeout(initializePosition, 16); // ~1 frame delay
+      });
     }
   }, [currentIndex, snapToIndex]);
 
-  // Simple scroll handler - just update selection and snap
+  // Smooth scroll handler with device-specific timing
   const handleScroll = useCallback(() => {
     if (disabled) return;
     
@@ -71,21 +84,33 @@ const TimerPicker: React.FC<TimerPickerProps> = ({ value, onChange, disabled = f
     const nearestIndex = Math.floor(rawIndex + 0.5);
     const clampedIndex = Math.max(0, Math.min(nearestIndex, timerOptions.length - 1));
     
-    // Update selection immediately - no complex timing
-    if (clampedIndex !== currentIndex && timerOptions[clampedIndex]) {
-      onChange(timerOptions[clampedIndex]);
+    // Clear any pending selection update
+    if (selectionTimeoutRef.current) {
+      clearTimeout(selectionTimeoutRef.current);
     }
     
-    // Simple debounced snap
+    // Device-specific selection timing for smooth experience
+    const selectionDelay = isMobile ? 100 : 150; // Mobile faster, desktop slower for consistency
+    
+    selectionTimeoutRef.current = setTimeout(() => {
+      if (clampedIndex !== currentIndex && timerOptions[clampedIndex]) {
+        onChange(timerOptions[clampedIndex]);
+      }
+      selectionTimeoutRef.current = null;
+    }, selectionDelay);
+    
+    // Clear any pending position snap
     if (snapTimeoutRef.current) {
       clearTimeout(snapTimeoutRef.current);
     }
     
+    // Position snapping when user stops scrolling
     snapTimeoutRef.current = setTimeout(() => {
       snapToIndex(clampedIndex, true);
-    }, 150);
+      snapTimeoutRef.current = null;
+    }, 300); // Position snapping delay
     
-  }, [disabled, currentIndex, itemHeight, onChange, snapToIndex, timerOptions]);
+  }, [disabled, currentIndex, itemHeight, isMobile, onChange, snapToIndex, timerOptions]);
 
   // Simple click handler
   const handleItemClick = useCallback((clickedMinutes: number) => {
@@ -97,19 +122,37 @@ const TimerPicker: React.FC<TimerPickerProps> = ({ value, onChange, disabled = f
     }
   }, [disabled, onChange, snapToIndex, timerOptions]);
 
-  // Simple mouse wheel handler
+  // Wheel handler with consistent timing
   const handleWheel = useCallback((e: WheelEvent) => {
     if (disabled) return;
     e.preventDefault();
+    
+    // Clear any pending timeouts to avoid conflicts
+    if (snapTimeoutRef.current) {
+      clearTimeout(snapTimeoutRef.current);
+    }
+    if (selectionTimeoutRef.current) {
+      clearTimeout(selectionTimeoutRef.current);
+    }
     
     const direction = e.deltaY > 0 ? 1 : -1;
     const newIndex = Math.max(0, Math.min(currentIndex + direction, timerOptions.length - 1));
     
     if (newIndex !== currentIndex) {
-      onChange(timerOptions[newIndex]);
-      snapToIndex(newIndex, true);
+      // Use same device-specific timing as scroll for consistency
+      const selectionDelay = isMobile ? 100 : 150;
+      
+      selectionTimeoutRef.current = setTimeout(() => {
+        onChange(timerOptions[newIndex]);
+        selectionTimeoutRef.current = null;
+      }, selectionDelay);
+      
+      // Smooth snap with a slight delay
+      setTimeout(() => {
+        snapToIndex(newIndex, true);
+      }, selectionDelay + 50);
     }
-  }, [disabled, currentIndex, onChange, snapToIndex, timerOptions]);
+  }, [disabled, currentIndex, isMobile, onChange, snapToIndex, timerOptions]);
 
   // Simple event listeners
   useEffect(() => {
@@ -125,6 +168,9 @@ const TimerPicker: React.FC<TimerPickerProps> = ({ value, onChange, disabled = f
       
       if (snapTimeoutRef.current) {
         clearTimeout(snapTimeoutRef.current);
+      }
+      if (selectionTimeoutRef.current) {
+        clearTimeout(selectionTimeoutRef.current);
       }
     };
   }, [handleScroll, handleWheel]);

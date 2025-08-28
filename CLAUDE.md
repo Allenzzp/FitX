@@ -42,12 +42,13 @@ The application uses a session-based architecture where workout sessions are the
 
 **Component Architecture:**
 - WorkoutTracker: Main state machine handling goal setting → active workout → completion flow
+- TimerPicker: iOS-style roller picker for session duration with device-responsive behavior
 - WeeklyChart: Standalone visualization component with its own data fetching
 - Mock API system provides offline development capability when backend unavailable
 
 **Session State Flow:**
-1. Goal setting (input validation, minimum 100 jumps)
-2. Session creation (POST to training-sessions)
+1. Goal and timer setting (input validation, minimum 100 jumps, 10-70 min timer)
+2. Session creation with timer state (POST to training-sessions)
 3. Progress tracking (PUT updates with auto-sync every 500 reps)
 4. Session completion (creates daily summary, celebration view)
 5. New goal reset
@@ -55,15 +56,15 @@ The application uses a session-based architecture where workout sessions are the
 **Development vs Production:**
 Frontend uses same API_BASE path (/.netlify/functions) for both environments. Mock API automatically activates when real functions return errors, enabling frontend-only development.
 
-## Implementation Workflow
+## MANDATORY Implementation Workflow
 
 **REQUIRED: Discuss Before Coding**
 Before implementing any bug fix or new feature, you MUST:
 
-1. **Analyze the issue/requirement** thoroughly
+1. **Analyze the issue/requirement** thoroughly - Focus on root causes, not just symptoms
 2. **Assess complexity**:
    - **Simple tasks** (UI fixes, small bugs): Propose solution directly in chat
-   - **Complex tasks** (new features, major changes): Request to create `IMPLEMENTATION_PROGRESS.md` for detailed tracking
+   - **Complex tasks** (new features, major changes): Create temporary progress tracking file
 3. **Propose a specific implementation approach** with technical details
 4. **Discuss and get agreement** on the solution strategy
 5. **Only then proceed** to write the actual code
@@ -77,4 +78,16 @@ Before implementing any bug fix or new feature, you MUST:
 - Update progress file throughout implementation across multiple sessions
 - Delete temp file only when feature is fully complete
 
-**Benefits**: Prevents over-planning while maintaining structure. Allows agile approach where we plan as we go, ensuring alignment at each step without wasting time on premature detailed analysis.
+**Benefits**: Prevents over-planning while maintaining structure. Ensures alignment at each step without wasting time on premature detailed analysis.
+
+## MANDATORY Bug Fixing Philosophy
+
+**Think Design-First, Not Patch-First**
+When encountering bugs, resist the impulse to immediately add incremental fixes to existing code. Instead:
+
+1. **Analyze the Root Design** - Is this bug a symptom of a fundamentally flawed approach?
+2. **Consider Complete Redesign** - Would a different architectural approach eliminate entire categories of bugs?
+3. **Evaluate Trade-offs** - Balance between over-engineering vs. repetitive patch cycles
+4. **Choose Deliberately** - Either redesign completely or patch strategically, but avoid endless incremental fixes
+
+**Goal**: Prevent back-and-forth bug cycles by addressing fundamental design issues rather than surface symptoms. Not every bug needs redesign, but always consider it as an option.
