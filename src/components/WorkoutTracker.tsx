@@ -1361,29 +1361,31 @@ const WorkoutTracker: React.FC = () => {
         
         <div className="session-controls">
           {currentSession.status === "active" && (
-            <button className="pause-workout-btn" onClick={pauseWorkout}>
-              Pause Training
-            </button>
-          )}
-          {currentSession.status === "paused" && (
-            <>
-              <div className="primary-resume-controls">
-                <button className="resume-workout-btn" onClick={resumeWorkout}>
-                  Resume Training
+            <div className="button-group-centered">
+              <div className="button-row">
+                <button className="session-btn session-btn--orange" onClick={pauseWorkout}>
+                  Pause Training
                 </button>
-                <button className="end-workout-btn" onClick={endWorkout}>
+                <button className="session-btn session-btn--red" onClick={endWorkout}>
                   End Training
                 </button>
               </div>
-              <button className="resume-to-activity-btn" onClick={resumeToLastActivity}>
+            </div>
+          )}
+          {currentSession.status === "paused" && (
+            <div className="button-group-centered">
+              <div className="button-row">
+                <button className="session-btn session-btn--green" onClick={resumeWorkout}>
+                  Resume Training
+                </button>
+                <button className="session-btn session-btn--red" onClick={endWorkout}>
+                  End Training
+                </button>
+              </div>
+              <button className="session-btn session-btn--blue session-btn--secondary" onClick={resumeToLastActivity}>
                 Resume to Last Activity
               </button>
-            </>
-          )}
-          {currentSession.status === "active" && (
-            <button className="end-workout-btn" onClick={endWorkout}>
-              End Training
-            </button>
+            </div>
           )}
         </div>
       </div>

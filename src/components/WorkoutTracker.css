@@ -447,9 +447,9 @@
   transform: scale(0.98);
 }
 
+/* Session Controls - Clean Architecture */
 .session-controls {
   margin-top: 30px;
-  text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -457,63 +457,75 @@
   width: 100%;
 }
 
-/* Desktop: Primary resume controls in row, secondary below */
-.primary-resume-controls {
+/* Button Row Container */
+.button-row {
   display: flex;
   gap: 20px;
   justify-content: center;
   width: 100%;
 }
 
-.end-workout-btn,
-.pause-workout-btn,
-.resume-workout-btn,
-.resume-to-activity-btn {
+/* Base Session Button Styles */
+.session-btn {
   border: none;
-  padding: 16px 32px; /* Increased padding for better mobile touch targets */
-  border-radius: 12px; /* Slightly larger border radius */
-  font-size: 1.1rem; /* Slightly larger font for better readability */
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-size: 1.1rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  flex: 1;
-  max-width: 300px;
-  min-width: 150px; /* Increased minimum width for better spacing */
   color: white;
+  min-width: 150px;
+  width: auto; /* Content-based width by default */
 }
 
-.end-workout-btn {
+/* Color Variants */
+.session-btn--red {
   background-color: #ff3b30;
 }
 
-.end-workout-btn:hover {
+.session-btn--red:hover {
   background-color: #d70015;
 }
 
-.pause-workout-btn {
+.session-btn--orange {
   background-color: #ff9500;
 }
 
-.pause-workout-btn:hover {
+.session-btn--orange:hover {
   background-color: #e6850e;
 }
 
-.resume-workout-btn {
+.session-btn--green {
   background-color: #34c759;
 }
 
-.resume-workout-btn:hover {
+.session-btn--green:hover {
   background-color: #2db653;
 }
 
-.resume-to-activity-btn {
+.session-btn--blue {
   background-color: #007aff;
-  width: 100%;
-  max-width: 400px;
 }
 
-.resume-to-activity-btn:hover {
+.session-btn--blue:hover {
   background-color: #0066cc;
+}
+
+/* Secondary Button (standalone, content-based width) */
+.session-btn--secondary {
+  width: auto;
+  min-width: auto;
+}
+
+/* Centered Button Group Container */
+.button-group-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 20px;
+  width: fit-content;
+  margin: 0 auto; /* Center the entire group */
 }
 
 .history-btn {
@@ -832,25 +844,34 @@
     font-size: 1.1rem;
   }
   
+  /* Desktop: Button rows remain horizontal, secondary buttons content-based */
   .session-controls {
     margin-top: 40px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-  
-  .primary-resume-controls {
-    display: flex;
-    flex-direction: row;
     gap: 30px;
-    justify-content: center;
+    align-items: center; /* Back to center since button-group-centered handles alignment */
   }
   
-  .resume-to-activity-btn {
-    width: auto;
-    max-width: none;
-    margin-left: calc(-150px - 15px); /* Move left to align with Resume Training left edge */
+  .button-row {
+    gap: 30px;
+    justify-content: center; /* Center buttons when they're the only element in the group */
+  }
+  
+  /* When button-group-centered has multiple children (button-row + secondary button), left-align */
+  .button-group-centered:has(.session-btn--secondary) .button-row {
+    justify-content: flex-start;
+  }
+  
+  .button-group-centered {
+    gap: 30px; /* Match desktop spacing */
+  }
+  
+  .session-btn {
+    padding: 12px 24px;
+    min-width: 150px;
+  }
+  
+  .session-btn--secondary {
+    /* Blue button will now align to the left naturally */
   }
   
   .ready-text {
@@ -1087,21 +1108,26 @@
     margin-top: 25px;
   }
 
-  /* Mobile: Stack all buttons vertically (Option M1) */
-  .primary-resume-controls {
+  /* Mobile: Stack button rows vertically, full-width buttons */
+  .button-row {
     flex-direction: column;
     gap: 16px;
-    width: 100%;
   }
   
-  .end-workout-btn,
-  .pause-workout-btn,
-  .resume-workout-btn,
-  .resume-to-activity-btn {
-    padding: 18px 24px; /* Even larger touch targets */
+  .button-group-centered {
+    width: 100%; /* Full width container on mobile */
+    margin: 0; /* Remove centering margin on mobile */
+    align-items: stretch; /* Stretch buttons to full width */
+  }
+  
+  .session-btn {
+    padding: 18px 24px;
     font-size: 1rem;
     min-width: 140px;
-    width: 100%; /* Full width on mobile */
-    max-width: none; /* Remove desktop max-width constraint */
+    width: 100%; /* Full width on mobile for better touch targets */
+  }
+  
+  .session-btn--secondary {
+    width: 100%; /* Blue button also full width on mobile */
   }
 }
