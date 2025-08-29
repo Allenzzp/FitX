@@ -1378,13 +1378,13 @@ const WorkoutTracker: React.FC = () => {
                 <button className="session-btn session-btn--green" onClick={resumeWorkout}>
                   Resume Training
                 </button>
+                <button className="session-btn session-btn--blue" onClick={resumeToLastActivity}>
+                  Resume to Last Activity
+                </button>
                 <button className="session-btn session-btn--red" onClick={endWorkout}>
                   End Training
                 </button>
               </div>
-              <button className="session-btn session-btn--blue session-btn--secondary" onClick={resumeToLastActivity}>
-                Resume to Last Activity
-              </button>
             </div>
           )}
         </div>
