@@ -1,0 +1,171 @@
+.workout-calendar {
+  width: 100%;
+  max-width: 350px;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Calendar Header */
+.calendar-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+.nav-btn {
+  border: none;
+  background: transparent;
+  color: #2C2C2E;
+  font-size: 1.2rem;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 2px 4px;
+  transition: color 0.2s ease;
+}
+
+.nav-btn:hover {
+  color: #007AFF;
+}
+
+.month-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+/* Week Days Header */
+.weekdays-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #8e8e93;
+  padding: 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Calendar Grid */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: default;
+  background: transparent;
+}
+
+/* Day number */
+.day-number {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1d1d1f;
+  line-height: 1;
+}
+
+/* Workout dot indicator */
+.workout-dot {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  background: #007AFF;
+  border-radius: 50%;
+}
+
+/* Date states */
+.calendar-day.other-month .day-number {
+  color: #c7c7cc;
+}
+
+.calendar-day.other-month .workout-dot {
+  background: #d1d1d6;
+}
+
+.calendar-day.today {
+  background: #007AFF;
+}
+
+.calendar-day.today .day-number {
+  color: white;
+  font-weight: 600;
+}
+
+.calendar-day.today .workout-dot {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.calendar-day.selected:not(.today) {
+  background: rgba(0, 122, 255, 0.1);
+  border: 1px solid #007AFF;
+}
+
+.calendar-day.selected:not(.today) .day-number {
+  color: #007AFF;
+  font-weight: 600;
+}
+
+/* Interactive states - All dates are clickable */
+.calendar-day {
+  cursor: pointer;
+}
+
+.calendar-day:hover:not(.today):not(.selected) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* Workout presence indicator - using .workout-dot class now */
+.calendar-day.has-workout {
+  position: relative;
+}
+
+/* Mobile responsive */
+@media (max-width: 400px) {
+  .workout-calendar {
+    max-width: 100%;
+    padding: 16px;
+  }
+  
+  .calendar-header {
+    margin-bottom: 16px;
+  }
+  
+  .month-title {
+    font-size: 1.1rem;
+  }
+  
+  .day-number {
+    font-size: 0.85rem;
+  }
+  
+  .workout-dot {
+    width: 5px;
+    height: 5px;
+    bottom: 3px;
+  }
+}

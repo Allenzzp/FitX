@@ -590,10 +590,41 @@
   position: absolute;
   top: 20px;
   left: 20px;
+  right: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+
+.testing-controls-right {
   display: flex;
   align-items: center;
   gap: 15px;
-  z-index: 10;
+}
+
+/* Back Button */
+.back-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2C2C2E;
+  font-size: 1.2rem;
+  font-weight: 400;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.back-btn:hover {
+  background: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 
@@ -912,7 +943,17 @@
   .testing-controls {
     top: 30px;
     left: 30px;
+    right: 30px;
+  }
+  
+  .testing-controls-right {
     gap: 20px;
+  }
+  
+  .back-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 1.3rem;
   }
   
   .testing-label {

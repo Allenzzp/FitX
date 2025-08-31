@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import WeeklyChart from './WeeklyChart';
 import TimerPicker from './TimerPicker';
@@ -37,6 +38,7 @@ interface DailySummary {
 }
 
 const WorkoutTracker: React.FC = () => {
+  const navigate = useNavigate();
   const goalInputRef = useRef<HTMLInputElement>(null);
   const [currentSession, setCurrentSession] = useState<TrainingSession | null>(null);
   const [autoPauseTimer, setAutoPauseTimer] = useState<NodeJS.Timeout | null>(null);
@@ -217,6 +219,10 @@ const WorkoutTracker: React.FC = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [currentSession, timerState]);
+
+  const handleBackClick = () => {
+    navigate('/');
+  };
 
   const toggleTestingMode = async () => {
     const newMode = !isTestingMode;
@@ -946,53 +952,61 @@ const WorkoutTracker: React.FC = () => {
     );
   }
 
-  // Testing controls component
+  // Testing controls component with conditional back button
   const TestingControls = () => (
     <div className="testing-controls">
-      {!currentSession && !isWorkoutComplete ? (
-        // Show toggle only when no active session (session creation)
-        <div className="testing-toggle">
-          <span className="testing-label">Test:</span>
-          <div className="toggle-container">
-            <button 
-              className={`toggle-option ${!isTestingMode ? 'active' : ''}`}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isTestingMode) {
-                  toggleTestingMode();
-                }
-              }}
-            >
-              Off
-            </button>
-            <button 
-              className={`toggle-option ${isTestingMode ? 'active' : ''}`}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!isTestingMode) {
-                  toggleTestingMode();
-                }
-              }}
-            >
-              On
-            </button>
-          </div>
-        </div>
-      ) : (
-        // Show mode status when session is active or on completion screen (read-only)
-        <div className="testing-mode-status">
-          <span className="mode-label">
-            Mode: {(currentSession?.testing === true || completedSession?.testing === true) ? 'Test Training' : 'Real Training'}
-          </span>
-        </div>
-      )}
-      {hasTestData && (
-        <button className="delete-test-btn" onClick={() => setShowDeleteConfirm(true)}>
-          Delete Test Data
+      {/* Only show back button when NOT in active session */}
+      {currentSession?.status !== "active" && (
+        <button className="back-btn" onClick={handleBackClick}>
+          ✕
         </button>
       )}
+      <div className="testing-controls-right">
+        {!currentSession && !isWorkoutComplete ? (
+          // Show toggle only when no active session (session creation)
+          <div className="testing-toggle">
+            <span className="testing-label">Test:</span>
+            <div className="toggle-container">
+              <button 
+                className={`toggle-option ${!isTestingMode ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (isTestingMode) {
+                    toggleTestingMode();
+                  }
+                }}
+              >
+                Off
+              </button>
+              <button 
+                className={`toggle-option ${isTestingMode ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isTestingMode) {
+                    toggleTestingMode();
+                  }
+                }}
+              >
+                On
+              </button>
+            </div>
+          </div>
+        ) : (
+          // Show mode status when session is active or on completion screen (read-only)
+          <div className="testing-mode-status">
+            <span className="mode-label">
+              Mode: {(currentSession?.testing === true || completedSession?.testing === true) ? 'Test Training' : 'Real Training'}
+            </span>
+          </div>
+        )}
+        {hasTestData && (
+          <button className="delete-test-btn" onClick={() => setShowDeleteConfirm(true)}>
+            Delete Test Data
+          </button>
+        )}
+      </div>
     </div>
   );
 

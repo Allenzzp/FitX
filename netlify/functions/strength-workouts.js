@@ -1,0 +1,270 @@
+const { connectToDatabase } = require('./utils/db');
+const { ObjectId } = require('mongodb');
+
+// Helper function to get current local time
+const getCurrentTime = () => {
+  return new Date();
+};
+
+// Helper function to validate date string and convert to date object
+const parseDate = (dateString) => {
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    throw new Error('Invalid date format');
+  }
+  return date;
+};
+
+// Helper function to create daily date (midnight in local timezone)
+const createDailyDate = (inputDate) => {
+  const date = new Date(inputDate);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+};
+
+exports.handler = async (event, context) => {
+  const { httpMethod, body, queryStringParameters } = event;
+  
+  try {
+    const client = await connectToDatabase();
+    const db = client.db('fitx');
+    const collection = db.collection('strengthWorkouts');
+    
+    switch (httpMethod) {
+      case 'GET':
+        // Check if this is a request to check for test data
+        if (queryStringParameters?.checkTestData) {
+          const testWorkouts = await collection.find({ testing: true }).toArray();
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({ hasTestData: testWorkouts.length > 0 })
+          };
+        }
+        
+        // Get workouts for a specific date
+        const dateParam = queryStringParameters?.date;
+        if (dateParam) {
+          const targetDate = createDailyDate(dateParam);
+          const workouts = await collection.findOne({ 
+            date: targetDate 
+          });
+          
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(workouts || { date: targetDate, exercises: [] })
+          };
+        }
+        
+        // Get today's workouts by default
+        const today = createDailyDate(new Date());
+        const todaysWorkouts = await collection.findOne({ 
+          date: today 
+        });
+        
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify(todaysWorkouts || { date: today, exercises: [] })
+        };
+        
+      case 'POST':
+        const workoutData = JSON.parse(body);
+        const workoutDate = createDailyDate(workoutData.date || new Date());
+        
+        // Find existing workout for this date
+        let existingWorkout = await collection.findOne({ date: workoutDate });
+        
+        if (existingWorkout) {
+          // Add new set to existing workout
+          const exerciseIndex = existingWorkout.exercises.findIndex(
+            ex => ex.exercise === workoutData.exercise
+          );
+          
+          if (exerciseIndex >= 0) {
+            // Exercise already exists, add new set
+            existingWorkout.exercises[exerciseIndex].sets.push({
+              reps: workoutData.reps,
+              timestamp: getCurrentTime().toISOString()
+            });
+          } else {
+            // New exercise for this date
+            existingWorkout.exercises.push({
+              exercise: workoutData.exercise,
+              sets: [{
+                reps: workoutData.reps,
+                timestamp: getCurrentTime().toISOString()
+              }]
+            });
+          }
+          
+          existingWorkout.updatedAt = getCurrentTime().toISOString();
+          
+          // Update the document
+          await collection.updateOne(
+            { _id: existingWorkout._id },
+            { $set: existingWorkout }
+          );
+          
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(existingWorkout)
+          };
+        } else {
+          // Create new workout document for this date
+          const newWorkout = {
+            date: workoutDate,
+            exercises: [{
+              exercise: workoutData.exercise,
+              sets: [{
+                reps: workoutData.reps,
+                timestamp: getCurrentTime().toISOString()
+              }]
+            }],
+            testing: workoutData.testing || false,
+            createdAt: getCurrentTime().toISOString(),
+            updatedAt: getCurrentTime().toISOString()
+          };
+          
+          const result = await collection.insertOne(newWorkout);
+          newWorkout._id = result.insertedId;
+          
+          return {
+            statusCode: 201,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(newWorkout)
+          };
+        }
+        
+      case 'PUT':
+        // Update or delete specific sets
+        const updateData = JSON.parse(body);
+        const workoutId = queryStringParameters?.id;
+        
+        if (!workoutId) {
+          return {
+            statusCode: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({ error: 'Workout ID required' })
+          };
+        }
+        
+        // Update workout data
+        const workoutUpdate = JSON.parse(body);
+        
+        // Remove _id from update data to avoid MongoDB error
+        const { _id, ...updateFields } = workoutUpdate;
+        
+        // Update the workout document
+        const result = await collection.updateOne(
+          { _id: new ObjectId(workoutId) },
+          { 
+            $set: {
+              ...updateFields,
+              updatedAt: getCurrentTime().toISOString()
+            }
+          }
+        );
+        
+        if (result.matchedCount === 0) {
+          return {
+            statusCode: 404,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({ error: 'Workout not found' })
+          };
+        }
+        
+        // Fetch and return updated document
+        const updatedWorkout = await collection.findOne({ _id: new ObjectId(workoutId) });
+        
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify(updatedWorkout)
+        };
+        
+      case 'DELETE':
+        // Delete test data
+        if (queryStringParameters?.deleteTestData === 'true') {
+          const deleteResult = await collection.deleteMany({ testing: true });
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({ 
+              message: 'Test strength workouts deleted successfully',
+              deletedCount: deleteResult.deletedCount 
+            })
+          };
+        }
+        
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({ error: 'Invalid delete request' })
+        };
+        
+      case 'OPTIONS':
+        return {
+          statusCode: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+          },
+          body: ''
+        };
+        
+      default:
+        return {
+          statusCode: 405,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({ error: 'Method not allowed' })
+        };
+    }
+    
+  } catch (error) {
+    console.error('Strength workouts function error:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ error: 'Internal server error', details: error.message })
+    };
+  }
+};
