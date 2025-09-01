@@ -33,6 +33,24 @@ const StrengthTracker: React.FC = () => {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedDateWorkout, setSelectedDateWorkout] = useState<StrengthWorkout | null>(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    show: boolean;
+    exerciseName: string;
+    setIndex: number;
+    set: WorkoutSet | null;
+  }>({ show: false, exerciseName: '', setIndex: 0, set: null });
+  const [editModal, setEditModal] = useState<{
+    show: boolean;
+    exerciseName: string;
+    setIndex: number;
+    set: WorkoutSet | null;
+  }>({ show: false, exerciseName: '', setIndex: 0, set: null });
+  const [inlineRecording, setInlineRecording] = useState<{
+    show: boolean;
+    phase: 'workout-selection' | 'reps-input';
+    selectedExercise: string | null;
+    inputValue: string;
+  }>({ show: false, phase: 'workout-selection', selectedExercise: null, inputValue: '' });
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -115,22 +133,41 @@ const StrengthTracker: React.FC = () => {
   };
 
   const handleAddWorkout = () => {
-    setShowRecordModal(true);
+    const currentWorkout = getDisplayWorkout();
+    
+    // For second and later sets, expand the summary first
+    if (currentWorkout?.exercises && currentWorkout.exercises.length > 0) {
+      // Expand all exercises to show existing sets
+      const exerciseNames = currentWorkout.exercises.map(ex => ex.exercise);
+      setExpandedExercises(new Set(exerciseNames));
+    }
+    
+    setInlineRecording({
+      show: true,
+      phase: 'workout-selection',
+      selectedExercise: null,
+      inputValue: ''
+    });
   };
 
   // Handle editing a specific set
   const handleEditSet = (exerciseName: string, setIndex: number, set: WorkoutSet) => {
-    const newReps = prompt(`Edit reps for Set ${setIndex + 1}:`, set.reps.toString());
-    if (newReps && parseInt(newReps) > 0) {
-      updateSet(exerciseName, set.timestamp, parseInt(newReps));
-    }
+    setEditModal({
+      show: true,
+      exerciseName,
+      setIndex,
+      set
+    });
   };
 
   // Handle deleting a specific set  
-  const handleDeleteSet = async (exerciseName: string, setIndex: number, set: WorkoutSet) => {
-    if (confirm(`Delete Set ${setIndex + 1} (${set.reps} reps)?`)) {
-      await deleteSet(exerciseName, set.timestamp);
-    }
+  const handleDeleteSet = (exerciseName: string, setIndex: number, set: WorkoutSet) => {
+    setDeleteConfirmModal({
+      show: true,
+      exerciseName,
+      setIndex,
+      set
+    });
   };
 
   // Update a set's reps value using timestamp targeting
@@ -243,14 +280,28 @@ const StrengthTracker: React.FC = () => {
 
   return (
     <div className="strength-container">
-      {/* Header with back button */}
-      <div className="strength-header">
-        <button className="back-btn" onClick={handleBackClick}>
-          ✕
-        </button>
-        <div className="testing-controls">
-          <div className="testing-toggle">
-            <span className="testing-label">Test:</span>
+      {/* Top half - Workout records area */}
+      <div className="workout-records-area">
+        {/* Top Header Div - narrow, full width */}
+        <div className="top-header-div">
+          {/* Left: Close button */}
+          <button className="header-close-btn" onClick={handleBackClick}>
+            ✕
+          </button>
+          
+          {/* Center: Date and weekday */}
+          <div className="header-date-center">
+            {selectedDate.toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+            {!isInEditWindow() && <span className="date-status">View Only</span>}
+          </div>
+          
+          {/* Right: Test toggle */}
+          <div className="header-test-toggle">
+            <span className="testing-label">Test</span>
             <div className="toggle-container">
               <button 
                 className={`toggle-option ${!isTestingMode ? 'active' : ''}`}
@@ -267,86 +318,135 @@ const StrengthTracker: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Top half - Workout records area */}
-      <div className="workout-records-area">
-        {/* Date indicator with edit status */}
-        <div className={`selected-date-indicator ${isInEditWindow() ? 'editable' : 'historical'}`}>
-          {selectedDate.toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            month: 'long', 
-            day: 'numeric' 
-          })}
-          {!isInEditWindow() && <span className="date-status">View Only</span>}
-        </div>
-        
-        {/* Display selected date exercises or REST */}
-        {getDisplayWorkout()?.exercises && getDisplayWorkout()!.exercises.length > 0 ? (
-          <div className="exercise-sentences">
-            {getDisplayWorkout()!.exercises.map((exercise, index) => {
-              const isExpanded = expandedExercises.has(exercise.exercise);
-              return (
-                <div key={`${exercise.exercise}-${index}`} className="exercise-sentence">
-                  <div 
-                    className="sentence-text"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      toggleExerciseExpansion(exercise.exercise);
-                    }}
-                  >
-                    {exercise.exercise}: {calculateDailyTotal(exercise)} reps
-                    <span className={`expand-arrow ${isExpanded ? 'expanded' : ''}`}>
-                      ↓
-                    </span>
-                  </div>
-                  
-                  {isExpanded && (
-                    <div className="sets-breakdown">
-                      {exercise.sets.map((set, setIndex) => (
-                        <div key={`${exercise.exercise}-set-${setIndex}`} className="set-item">
-                          <span className="set-number">Set {setIndex + 1}:</span>
-                          <span className="set-reps">{set.reps} reps</span>
-                          <span className="set-time">{formatTime(set.timestamp)}</span>
-                          {isInEditWindow() && getDisplayWorkout()?._id && (
-                            <div className="set-actions">
-                              <button 
-                                className="set-edit-btn"
-                                onClick={() => handleEditSet(exercise.exercise, setIndex, set)}
-                              >
-                                ✎
-                              </button>
-                              <button 
-                                className="set-delete-btn"
-                                onClick={() => handleDeleteSet(exercise.exercise, setIndex, set)}
-                              >
-                                ×
-                              </button>
+        {/* Bottom Content Div - takes most space, full width */}
+        <div className="bottom-content-div">
+          {/* Left Column - workout sentences */}
+          <div className="left-column">
+            {/* Display selected date exercises or REST */}
+            {getDisplayWorkout()?.exercises && getDisplayWorkout()!.exercises.length > 0 ? (
+              <div className="exercise-sentences">
+                {getDisplayWorkout()!.exercises.map((exercise, index) => {
+                  const isExpanded = expandedExercises.has(exercise.exercise);
+                  return (
+                    <div key={`${exercise.exercise}-${index}`} className="exercise-sentence">
+                      <div 
+                        className="sentence-text"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleExerciseExpansion(exercise.exercise);
+                        }}
+                      >
+                        {exercise.exercise}: {calculateDailyTotal(exercise)} reps
+                        <span className={`expand-arrow ${isExpanded ? 'expanded' : ''}`}>
+                          ↓
+                        </span>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="sets-breakdown">
+                          {exercise.sets.map((set, setIndex) => (
+                            <div key={`${exercise.exercise}-set-${setIndex}`} className="set-item">
+                              <span className="set-number">Set {setIndex + 1}:</span>
+                              <span className="set-reps">{set.reps} reps</span>
+                              <span className="set-time">{formatTime(set.timestamp)}</span>
+                              {isInEditWindow() && getDisplayWorkout()?._id && (
+                                <div className="set-actions">
+                                  <button 
+                                    className="set-edit-btn"
+                                    onClick={() => handleEditSet(exercise.exercise, setIndex, set)}
+                                  >
+                                    ✎
+                                  </button>
+                                  <button 
+                                    className="set-delete-btn"
+                                    onClick={() => handleDeleteSet(exercise.exercise, setIndex, set)}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                          )}
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ) : !isInEditWindow() && (
+              <div className="rest-display">
+                <div className="rest-text">REST</div>
+              </div>
+            )}
+            
+            {/* Inline Recording Component */}
+            {inlineRecording.show && (
+              <InlineRecordingComponent
+                phase={inlineRecording.phase}
+                selectedExercise={inlineRecording.selectedExercise}
+                inputValue={inlineRecording.inputValue}
+                exerciseOptions={exerciseOptions}
+                isTestingMode={isTestingMode}
+                onExerciseSelect={(exerciseName) => {
+                  setInlineRecording({
+                    ...inlineRecording,
+                    phase: 'reps-input',
+                    selectedExercise: exerciseName
+                  });
+                }}
+                onInputChange={(value) => {
+                  setInlineRecording({
+                    ...inlineRecording,
+                    inputValue: value
+                  });
+                }}
+                onRecord={async () => {
+                  if (inlineRecording.selectedExercise && inlineRecording.inputValue) {
+                    try {
+                      const ExerciseClass = getExerciseClass(inlineRecording.selectedExercise as ExerciseClassName);
+                      const exerciseInstance = new ExerciseClass(parseInt(inlineRecording.inputValue));
+                      
+                      const response = await axios.post(`${API_BASE}/strength-workouts`, {
+                        exercise: ExerciseClass.exerciseName,
+                        reps: exerciseInstance.reps,
+                        testing: isTestingMode,
+                        date: new Date().toISOString()
+                      });
+                      
+                      setTodaysWorkout(response.data);
+                      setInlineRecording({ show: false, phase: 'workout-selection', selectedExercise: null, inputValue: '' });
+                    } catch (error) {
+                      console.error('Failed to record workout:', error);
+                    }
+                  }
+                }}
+                onCancel={() => {
+                  if (inlineRecording.phase === 'reps-input') {
+                    setInlineRecording({
+                      ...inlineRecording,
+                      phase: 'workout-selection',
+                      selectedExercise: null,
+                      inputValue: ''
+                    });
+                  } else {
+                    setInlineRecording({ show: false, phase: 'workout-selection', selectedExercise: null, inputValue: '' });
+                  }
+                }}
+              />
+            )}
           </div>
-        ) : !isInEditWindow() && (
-          <div className="rest-display">
-            <div className="rest-text">REST</div>
+
+          {/* Right Column - + button */}
+          <div className="right-column">
+            {isInEditWindow() && (
+              <button className="add-workout-btn" onClick={handleAddWorkout}>
+                +
+              </button>
+            )}
           </div>
-        )}
-        
-        {/* Add workout button - only for editable dates */}
-        {isInEditWindow() && (
-          <div className="add-workout-container">
-            <button className="add-workout-btn" onClick={handleAddWorkout}>
-              +
-            </button>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Bottom half - Calendar area */}
@@ -384,6 +484,217 @@ const StrengthTracker: React.FC = () => {
           }}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmModal.show && (
+        <ConfirmDeleteModal
+          exerciseName={deleteConfirmModal.exerciseName}
+          setIndex={deleteConfirmModal.setIndex}
+          set={deleteConfirmModal.set!}
+          onConfirm={async () => {
+            await deleteSet(deleteConfirmModal.exerciseName, deleteConfirmModal.set!.timestamp);
+            setDeleteConfirmModal({ show: false, exerciseName: '', setIndex: 0, set: null });
+          }}
+          onCancel={() => setDeleteConfirmModal({ show: false, exerciseName: '', setIndex: 0, set: null })}
+        />
+      )}
+
+      {/* Edit Set Modal */}
+      {editModal.show && (
+        <EditSetModal
+          exerciseName={editModal.exerciseName}
+          setIndex={editModal.setIndex}
+          set={editModal.set!}
+          onConfirm={async (newReps: number) => {
+            await updateSet(editModal.exerciseName, editModal.set!.timestamp, newReps);
+            setEditModal({ show: false, exerciseName: '', setIndex: 0, set: null });
+          }}
+          onCancel={() => setEditModal({ show: false, exerciseName: '', setIndex: 0, set: null })}
+        />
+      )}
+    </div>
+  );
+};
+
+// Confirm Delete Modal Component
+interface ConfirmDeleteModalProps {
+  exerciseName: string;
+  setIndex: number;
+  set: WorkoutSet;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
+  exerciseName,
+  setIndex,
+  set,
+  onConfirm,
+  onCancel
+}) => {
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content confirm-modal">
+        <div className="confirm-message">
+          <p>Delete <strong>Set {setIndex + 1}: {set.reps} reps</strong> from {exerciseName}?</p>
+        </div>
+        <div className="modal-actions">
+          <button className="cancel-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="confirm-btn delete-confirm" onClick={onConfirm}>
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Inline Recording Component
+interface InlineRecordingComponentProps {
+  phase: 'workout-selection' | 'reps-input';
+  selectedExercise: string | null;
+  inputValue: string;
+  exerciseOptions: ReturnType<typeof getExerciseOptions>;
+  isTestingMode: boolean;
+  onExerciseSelect: (exerciseName: string) => void;
+  onInputChange: (value: string) => void;
+  onRecord: () => void;
+  onCancel: () => void;
+}
+
+const InlineRecordingComponent: React.FC<InlineRecordingComponentProps> = ({
+  phase,
+  selectedExercise,
+  inputValue,
+  exerciseOptions,
+  isTestingMode,
+  onExerciseSelect,
+  onInputChange,
+  onRecord,
+  onCancel
+}) => {
+  if (phase === 'workout-selection') {
+    return (
+      <div className="inline-recording">
+        <div className="inline-sentence">
+          I did{' '}
+          <span className="workout-selector">
+            <select 
+              className="workout-dropdown"
+              value={selectedExercise || ''}
+              onChange={(e) => e.target.value && onExerciseSelect(e.target.value)}
+              autoFocus
+            >
+              <option value="">______</option>
+              {exerciseOptions.map(option => (
+                <option key={option.key} value={option.key}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </span>{' '}
+          today.
+        </div>
+        <div className="inline-actions">
+          <button className="inline-cancel-btn" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'reps-input') {
+    const exerciseClass = selectedExercise ? getExerciseClass(selectedExercise as ExerciseClassName) : null;
+    return (
+      <div className="inline-recording">
+        <div className="inline-sentence">
+          I did{' '}
+          <input 
+            type="number"
+            className="reps-input"
+            value={inputValue}
+            onChange={(e) => onInputChange(e.target.value)}
+            placeholder="0"
+            autoFocus
+            min="1"
+          />{' '}
+          {exerciseClass?.inputLabel.toLowerCase()} of {exerciseClass?.exerciseName} today.
+        </div>
+        <div className="inline-actions">
+          <button className="inline-cancel-btn" onClick={onCancel}>
+            Go Back
+          </button>
+          <button 
+            className="inline-record-btn" 
+            onClick={onRecord}
+            disabled={!inputValue || parseInt(inputValue) <= 0}
+          >
+            Record
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+// Edit Set Modal Component  
+interface EditSetModalProps {
+  exerciseName: string;
+  setIndex: number;
+  set: WorkoutSet;
+  onConfirm: (newReps: number) => void;
+  onCancel: () => void;
+}
+
+const EditSetModal: React.FC<EditSetModalProps> = ({
+  exerciseName,
+  setIndex,
+  set,
+  onConfirm,
+  onCancel
+}) => {
+  const [inputValue, setInputValue] = useState(set.reps.toString());
+
+  const handleConfirm = () => {
+    const newReps = parseInt(inputValue);
+    if (newReps && newReps > 0) {
+      onConfirm(newReps);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content edit-modal">
+        <div className="edit-message">
+          <p>Edit reps for <strong>Set {setIndex + 1}</strong> in {exerciseName}:</p>
+        </div>
+        <div className="input-group">
+          <input
+            type="number"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            autoFocus
+            min="1"
+          />
+        </div>
+        <div className="modal-actions">
+          <button className="cancel-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button 
+            className="confirm-btn" 
+            onClick={handleConfirm}
+            disabled={!inputValue || parseInt(inputValue) <= 0}
+          >
+            Save
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

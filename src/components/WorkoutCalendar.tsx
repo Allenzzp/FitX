@@ -59,20 +59,27 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
     const month = currentMonth.getMonth();
     
     const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    
     const startDate = new Date(firstDayOfMonth);
     
     // Adjust to start from Monday (0 = Sunday, 1 = Monday, etc.)
     const dayOfWeek = firstDayOfMonth.getDay();
-    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 6 days back, Monday = 0 days back
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     startDate.setDate(startDate.getDate() - daysFromMonday);
     
     const days: Date[] = [];
     const currentDate = new Date(startDate);
     
-    // Generate 42 days (6 weeks) for consistent calendar grid
-    for (let i = 0; i < 42; i++) {
+    // Add dates until we complete the month
+    while (currentDate <= lastDayOfMonth || currentDate.getDay() !== 1) {
       days.push(new Date(currentDate));
       currentDate.setDate(currentDate.getDate() + 1);
+      
+      // Stop if we're in the next month and it's Monday (start of a new week)
+      if (currentDate.getMonth() !== month && currentDate.getDay() === 1) {
+        break;
+      }
     }
     
     return days;

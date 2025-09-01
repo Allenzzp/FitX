@@ -11,10 +11,10 @@
 /* Calendar Header */
 .calendar-header {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  gap: 16px;
+  gap: 8px;
 }
 
 .nav-btn {
@@ -24,12 +24,19 @@
   font-size: 1.2rem;
   font-weight: 400;
   cursor: pointer;
-  padding: 2px 4px;
-  transition: color 0.2s ease;
+  padding: 8px;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
 }
 
 .nav-btn:hover {
   color: #007AFF;
+  background: rgba(0, 122, 255, 0.1);
 }
 
 .month-title {
@@ -38,6 +45,8 @@
   color: #1d1d1f;
   margin: 0;
   letter-spacing: -0.02em;
+  flex: 1;
+  text-align: center;
 }
 
 /* Week Days Header */
