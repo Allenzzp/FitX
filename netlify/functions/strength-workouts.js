@@ -15,10 +15,11 @@ const parseDate = (dateString) => {
   return date;
 };
 
-// Helper function to create daily date (midnight in local timezone)
+// Helper function to create daily date (midnight UTC - matching main branch)
 const createDailyDate = (inputDate) => {
   const date = new Date(inputDate);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+  // Create UTC date to match main branch behavior and existing records
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())).toISOString();
 };
 
 exports.handler = async (event, context) => {
@@ -41,6 +42,34 @@ exports.handler = async (event, context) => {
               'Access-Control-Allow-Origin': '*'
             },
             body: JSON.stringify({ hasTestData: testWorkouts.length > 0 })
+          };
+        }
+        
+        // Get workouts for a date range (month query with local-to-UTC boundaries)
+        const startDate = queryStringParameters?.startDate;
+        const endDate = queryStringParameters?.endDate;
+        
+        if (startDate && endDate) {
+          // Frontend sends UTC boundaries converted from local time
+          // Query database directly with these UTC boundaries
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          
+          // Database stores date as ISO string, so compare with strings
+          const workouts = await collection.find({
+            date: {
+              $gte: start.toISOString(),
+              $lte: end.toISOString()
+            }
+          }).sort({ date: 1 }).toArray();
+          
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(workouts)
           };
         }
         

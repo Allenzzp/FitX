@@ -45,12 +45,6 @@ const StrengthTracker: React.FC = () => {
     setIndex: number;
     set: WorkoutSet | null;
   }>({ show: false, exerciseName: '', setIndex: 0, set: null });
-  const [inlineRecording, setInlineRecording] = useState<{
-    show: boolean;
-    phase: 'workout-selection' | 'reps-input';
-    selectedExercise: string | null;
-    inputValue: string;
-  }>({ show: false, phase: 'workout-selection', selectedExercise: null, inputValue: '' });
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -85,26 +79,18 @@ const StrengthTracker: React.FC = () => {
     });
   };
 
-  // Handle date selection from calendar
-  const handleDateSelect = async (date: Date) => {
+  // Handle date selection from calendar (now receives pre-loaded workout data)
+  const handleDateSelect = (date: Date, workoutData?: StrengthWorkout | null) => {
     setSelectedDate(date);
     setExpandedExercises(new Set()); // Reset expanded state
     
-    // Load workout data for selected date
-    const dateString = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+    // Use pre-loaded workout data from calendar to avoid additional API calls
+    setSelectedDateWorkout(workoutData || null);
     
-    try {
-      const response = await axios.get(`${API_BASE}/strength-workouts?date=${dateString}`);
-      setSelectedDateWorkout(response.data || null);
-      
-      // If selected date is today, also update todaysWorkout
-      const today = new Date();
-      if (date.toDateString() === today.toDateString()) {
-        setTodaysWorkout(response.data || null);
-      }
-    } catch (error) {
-      console.error('Failed to load selected date workout:', error);
-      setSelectedDateWorkout(null);
+    // If selected date is today, also update todaysWorkout
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) {
+      setTodaysWorkout(workoutData || null);
     }
   };
 
@@ -124,6 +110,13 @@ const StrengthTracker: React.FC = () => {
     return daysDiff >= 0 && daysDiff <= 2;
   };
 
+  // Check if selected date is a past date beyond the edit window (should show REST if no workout)
+  const isPastBeyondEditWindow = (): boolean => {
+    const today = new Date();
+    const daysDiff = Math.floor((today.getTime() - selectedDate.getTime()) / (1000 * 60 * 60 * 24));
+    return daysDiff > 2; // More than 2 days ago
+  };
+
   const handleBackClick = () => {
     navigate('/');
   };
@@ -133,21 +126,7 @@ const StrengthTracker: React.FC = () => {
   };
 
   const handleAddWorkout = () => {
-    const currentWorkout = getDisplayWorkout();
-    
-    // For second and later sets, expand the summary first
-    if (currentWorkout?.exercises && currentWorkout.exercises.length > 0) {
-      // Expand all exercises to show existing sets
-      const exerciseNames = currentWorkout.exercises.map(ex => ex.exercise);
-      setExpandedExercises(new Set(exerciseNames));
-    }
-    
-    setInlineRecording({
-      show: true,
-      phase: 'workout-selection',
-      selectedExercise: null,
-      inputValue: ''
-    });
+    setShowRecordModal(true);
   };
 
   // Handle editing a specific set
@@ -249,23 +228,12 @@ const StrengthTracker: React.FC = () => {
     }
   };
 
-  // Fetch today's workout only (exercise definitions come from classes)
+  // Initialize app state - data will be loaded by WorkoutCalendar
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const workoutResponse = await axios.get(`${API_BASE}/strength-workouts`);
-        setTodaysWorkout(workoutResponse.data);
-        
-        // Initialize selected date workout (today by default)
-        handleDateSelect(new Date());
-      } catch (error) {
-        console.error('Failed to fetch workout data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    // Just initialize with today's date - calendar will provide the data
+    const today = new Date();
+    setSelectedDate(today);
+    setLoading(false);
   }, []);
 
   if (loading) {
@@ -375,67 +343,12 @@ const StrengthTracker: React.FC = () => {
                   );
                 })}
               </div>
-            ) : !isInEditWindow() && (
+            ) : isPastBeyondEditWindow() && (
               <div className="rest-display">
                 <div className="rest-text">REST</div>
               </div>
             )}
             
-            {/* Inline Recording Component */}
-            {inlineRecording.show && (
-              <InlineRecordingComponent
-                phase={inlineRecording.phase}
-                selectedExercise={inlineRecording.selectedExercise}
-                inputValue={inlineRecording.inputValue}
-                exerciseOptions={exerciseOptions}
-                isTestingMode={isTestingMode}
-                onExerciseSelect={(exerciseName) => {
-                  setInlineRecording({
-                    ...inlineRecording,
-                    phase: 'reps-input',
-                    selectedExercise: exerciseName
-                  });
-                }}
-                onInputChange={(value) => {
-                  setInlineRecording({
-                    ...inlineRecording,
-                    inputValue: value
-                  });
-                }}
-                onRecord={async () => {
-                  if (inlineRecording.selectedExercise && inlineRecording.inputValue) {
-                    try {
-                      const ExerciseClass = getExerciseClass(inlineRecording.selectedExercise as ExerciseClassName);
-                      const exerciseInstance = new ExerciseClass(parseInt(inlineRecording.inputValue));
-                      
-                      const response = await axios.post(`${API_BASE}/strength-workouts`, {
-                        exercise: ExerciseClass.exerciseName,
-                        reps: exerciseInstance.reps,
-                        testing: isTestingMode,
-                        date: new Date().toISOString()
-                      });
-                      
-                      setTodaysWorkout(response.data);
-                      setInlineRecording({ show: false, phase: 'workout-selection', selectedExercise: null, inputValue: '' });
-                    } catch (error) {
-                      console.error('Failed to record workout:', error);
-                    }
-                  }
-                }}
-                onCancel={() => {
-                  if (inlineRecording.phase === 'reps-input') {
-                    setInlineRecording({
-                      ...inlineRecording,
-                      phase: 'workout-selection',
-                      selectedExercise: null,
-                      inputValue: ''
-                    });
-                  } else {
-                    setInlineRecording({ show: false, phase: 'workout-selection', selectedExercise: null, inputValue: '' });
-                  }
-                }}
-              />
-            )}
           </div>
 
           {/* Right Column - + button */}
@@ -476,7 +389,12 @@ const StrengthTracker: React.FC = () => {
                 date: new Date().toISOString()
               });
               
-              setTodaysWorkout(response.data);
+              // Update both today's workout and selected date workout if they're the same
+              const today = new Date();
+              if (selectedDate.toDateString() === today.toDateString()) {
+                setTodaysWorkout(response.data);
+                setSelectedDateWorkout(response.data);
+              }
               setShowRecordModal(false);
             } catch (error) {
               console.error('Failed to record workout:', error);
@@ -551,96 +469,6 @@ const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
   );
 };
 
-// Inline Recording Component
-interface InlineRecordingComponentProps {
-  phase: 'workout-selection' | 'reps-input';
-  selectedExercise: string | null;
-  inputValue: string;
-  exerciseOptions: ReturnType<typeof getExerciseOptions>;
-  isTestingMode: boolean;
-  onExerciseSelect: (exerciseName: string) => void;
-  onInputChange: (value: string) => void;
-  onRecord: () => void;
-  onCancel: () => void;
-}
-
-const InlineRecordingComponent: React.FC<InlineRecordingComponentProps> = ({
-  phase,
-  selectedExercise,
-  inputValue,
-  exerciseOptions,
-  isTestingMode,
-  onExerciseSelect,
-  onInputChange,
-  onRecord,
-  onCancel
-}) => {
-  if (phase === 'workout-selection') {
-    return (
-      <div className="inline-recording">
-        <div className="inline-sentence">
-          I did{' '}
-          <span className="workout-selector">
-            <select 
-              className="workout-dropdown"
-              value={selectedExercise || ''}
-              onChange={(e) => e.target.value && onExerciseSelect(e.target.value)}
-              autoFocus
-            >
-              <option value="">______</option>
-              {exerciseOptions.map(option => (
-                <option key={option.key} value={option.key}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-          </span>{' '}
-          today.
-        </div>
-        <div className="inline-actions">
-          <button className="inline-cancel-btn" onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'reps-input') {
-    const exerciseClass = selectedExercise ? getExerciseClass(selectedExercise as ExerciseClassName) : null;
-    return (
-      <div className="inline-recording">
-        <div className="inline-sentence">
-          I did{' '}
-          <input 
-            type="number"
-            className="reps-input"
-            value={inputValue}
-            onChange={(e) => onInputChange(e.target.value)}
-            placeholder="0"
-            autoFocus
-            min="1"
-          />{' '}
-          {exerciseClass?.inputLabel.toLowerCase()} of {exerciseClass?.exerciseName} today.
-        </div>
-        <div className="inline-actions">
-          <button className="inline-cancel-btn" onClick={onCancel}>
-            Go Back
-          </button>
-          <button 
-            className="inline-record-btn" 
-            onClick={onRecord}
-            disabled={!inputValue || parseInt(inputValue) <= 0}
-          >
-            Record
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
-};
 
 // Edit Set Modal Component  
 interface EditSetModalProps {

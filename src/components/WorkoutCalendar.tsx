@@ -23,7 +23,7 @@ interface StrengthWorkout {
 
 interface WorkoutCalendarProps {
   selectedDate: Date;
-  onDateSelect: (date: Date) => void;
+  onDateSelect: (date: Date, workoutData?: StrengthWorkout | null) => void;
   isTestingMode: boolean;
 }
 
@@ -48,8 +48,9 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
     return 'HISTORICAL';
   };
 
-  // Format date for API calls
+  // Format date for local date mapping (creates consistent key for local dates)
   const formatDateForAPI = (date: Date): string => {
+    // Create a local date key without timezone conversion
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
   };
 
@@ -85,29 +86,45 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
     return days;
   };
 
-  // Load workout data for visible dates
+  // Load workout data for the entire month range using proper local-to-UTC boundaries
   const loadWorkoutData = async (dates: Date[]) => {
     setLoading(true);
     const dataMap: Record<string, StrengthWorkout> = {};
     
     try {
-      // Load data for each date (in practice, you might batch this)
-      for (const date of dates) {
-        const dateKey = formatDateForAPI(date);
-        try {
-          const response = await axios.get(`${API_BASE}/strength-workouts?date=${dateKey}`);
-          if (response.data && response.data.exercises?.length > 0) {
-            dataMap[dateKey] = response.data;
-          }
-        } catch (error) {
-          // Silently handle individual date failures
-          console.log('No data for date:', dateKey);
-        }
-      }
+      // Create proper month boundaries in local time (Vancouver)
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth();
       
+      // Start: First day of month at 00:00:00 local time
+      const monthStart = new Date(year, month, 1, 0, 0, 0, 0);
+      
+      // End: Last day of month at 23:59:59 local time  
+      const lastDay = new Date(year, month + 1, 0).getDate(); // Get last day of month
+      const monthEnd = new Date(year, month, lastDay, 23, 59, 59, 999);
+      
+      // Convert local boundaries to UTC for database query
+      const startUTC = monthStart.toISOString();
+      const endUTC = monthEnd.toISOString();
+      
+      // Query for all workouts in this UTC date range
+      const response = await axios.get(`${API_BASE}/strength-workouts?startDate=${startUTC}&endDate=${endUTC}`);
+      
+      if (response.data && Array.isArray(response.data)) {
+        // Map each workout to its local date for easy lookup
+        response.data.forEach((workout: StrengthWorkout) => {
+          if (workout && workout.exercises && workout.exercises.length > 0) {
+            // Convert UTC date back to local date for display mapping
+            const workoutLocalDate = new Date(workout.date);
+            const localDateKey = formatDateForAPI(workoutLocalDate);
+            dataMap[localDateKey] = workout;
+          }
+        });
+      }
       setWorkoutData(dataMap);
     } catch (error) {
       console.error('Failed to load calendar workout data:', error);
+      setWorkoutData({});
     } finally {
       setLoading(false);
     }
@@ -119,9 +136,29 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
     loadWorkoutData(days);
   }, [currentMonth, isTestingMode]);
 
+  // After data loads, trigger initial date selection if no date selected yet
+  useEffect(() => {
+    const dataKeys = Object.keys(workoutData);
+    if (dataKeys.length > 0) {
+      // Find today's data if available, otherwise keep current selection
+      const today = new Date();
+      const todayKey = formatDateForAPI(today);
+      const todayWorkout = workoutData[todayKey];
+      
+      // If viewing current month and today has data, auto-select today
+      if (today.getMonth() === currentMonth.getMonth() && 
+          today.getFullYear() === currentMonth.getFullYear()) {
+        onDateSelect(today, todayWorkout);
+      }
+    }
+  }, [workoutData]);
+
   const handleDateClick = (date: Date) => {
     // Allow clicking any date - actions are limited based on date state
-    onDateSelect(date);
+    // Pass the pre-loaded workout data for this date to avoid additional API calls
+    const dateKey = formatDateForAPI(date);
+    const workoutForDate = workoutData[dateKey] || null;
+    onDateSelect(date, workoutForDate);
   };
 
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -146,6 +183,7 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
   };
 
   const hasWorkoutData = (date: Date): boolean => {
+    // Simply check if we have workout data for this date (already mapped by local date)
     const dateKey = formatDateForAPI(date);
     const workout = workoutData[dateKey];
     return workout && workout.exercises && workout.exercises.length > 0;
