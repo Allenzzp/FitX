@@ -21,41 +21,52 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 144px; /* 1.2x of 120px for mobile */
+  height: 144px;
+  border-radius: 50%;
+  /* Transparent background - you can see through */
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
 }
 
-.circular-timer-svg {
-  transform: rotate(-90deg); /* Start progress from top */
-}
-
-.circular-timer-bg {
-  fill: none;
-  stroke: #E5E5EA;
-  stroke-linecap: round;
-}
-
-.circular-timer-progress {
-  fill: none;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 1s ease-in-out, stroke 0.3s ease;
+/* Thin progress ring using conic-gradient mask */
+.progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-sizing: border-box;
+  /* Create thin ring effect with radial gradient - solid colors, no blur */
+  background: 
+    conic-gradient(
+      from -90deg,
+      var(--progress-color, #34C759) 0deg var(--progress-angle, 0deg),
+      rgba(229, 229, 234, 0.4) var(--progress-angle, 0deg) 360deg
+    );
+  /* 1% width ring for both mobile and desktop */
+  mask: radial-gradient(circle, transparent 48%, black 49.5%, black 50.5%, transparent 52%);
+  -webkit-mask: radial-gradient(circle, transparent 48%, black 49.5%, black 50.5%, transparent 52%);
+  transition: all 0.3s ease;
 }
 
 .circular-timer-content {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   pointer-events: none;
+  width: 100%;
+  height: 100%;
 }
 
 .timer-text {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #2C2C2E;
+  color: #2C2C2E; /* Match jumps remaining color */
   font-variant-numeric: tabular-nums;
   line-height: 1;
   margin: 0;
@@ -89,7 +100,7 @@
 }
 
 .paused-bg {
-  opacity: 0.6;
+  /* Remove opacity - keep normal text styling */
   z-index: 1;
 }
 
@@ -97,19 +108,23 @@
   position: absolute;
   width: 0;
   height: 0;
-  border-left: 16px solid rgba(44, 44, 46, 0.8);
+  /* Base size - will be overridden by media queries */
+  border-left: 16px solid rgba(44, 44, 46, 0.05); /* 5% opacity */
   border-top: 12px solid transparent;
   border-bottom: 12px solid transparent;
-  margin-left: 4px; /* Slight offset for visual centering */
+  margin-left: 4px;
   z-index: 2;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+  /* Soft rounded corners */
+  border-radius: 4px;
+  /* Remove shadow - clean triangle only */
+  backdrop-filter: blur(0.5px);
 }
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
-  .circular-timer-svg {
-    width: 100px;
-    height: 100px;
+  .circular-timer-container {
+    width: 180px; /* 1.5x bigger for mobile */
+    height: 180px;
   }
   
   .timer-text {
@@ -121,19 +136,23 @@
   }
   
   .triangle-play {
-    border-left: 12px solid rgba(44, 44, 46, 0.8);
-    border-top: 9px solid transparent;
-    border-bottom: 9px solid transparent;
-    margin-left: 3px;
+    /* Mobile: 74px × 0.8 ≈ 59px */
+    border-left: 59px solid rgba(44, 44, 46, 0.05);
+    border-top: 44px solid transparent;
+    border-bottom: 44px solid transparent;
+    margin-left: 15px;
+    border-radius: 6px; /* Softer corners for larger triangle */
   }
 }
 
 /* Desktop enhancements */
 @media (min-width: 768px) {
-  .circular-timer-svg {
-    width: 220px;
-    height: 220px;
+  .circular-timer-container {
+    width: 210px; /* 1.5x of 140px */
+    height: 210px;
   }
+  
+  /* Progress bar already 1% width globally - no override needed */
   
   .timer-text {
     font-size: 1.8rem;
@@ -147,9 +166,11 @@
   }
   
   .triangle-play {
-    border-left: 20px solid rgba(44, 44, 46, 0.8);
-    border-top: 15px solid transparent;
-    border-bottom: 15px solid transparent;
-    margin-left: 5px;
+    /* Desktop: original × 3 × 1.5 = 16px × 4.5 = 72px */
+    border-left: 72px solid rgba(44, 44, 46, 0.05);
+    border-top: 54px solid transparent;
+    border-bottom: 54px solid transparent;
+    margin-left: 18px;
+    border-radius: 5px; /* Soft corners */
   }
 }

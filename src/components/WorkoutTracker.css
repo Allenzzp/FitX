@@ -211,18 +211,18 @@
 /* Mobile responsiveness for side-by-side layout */
 @media (max-width: 480px) {
   .progress-timer-container {
-    flex-direction: column;
-    gap: 1.5rem;
+    flex-direction: row;
+    gap: 1rem;
   }
   
   .jumps-section {
-    order: 1;
-    width: 100%;
+    flex: 1;
+    width: 50%;
   }
   
   .timer-section {
-    order: 2;
-    width: 100%;
+    flex: 1;
+    width: 50%;
   }
 }
 
@@ -911,7 +911,7 @@
   }
   
   .main-number {
-    font-size: 8rem;
+    font-size: 4rem;
   }
   
   .remaining-label {

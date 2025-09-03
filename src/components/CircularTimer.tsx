@@ -26,7 +26,7 @@ const CircularTimer: React.FC<CircularTimerProps> = ({
     if (isExpired) return '#FF3B30'; // Red for overtime
     if (progressPercentage <= 5) return '#FF3B30'; // Red for 5% or less
     if (progressPercentage <= 10) return '#FF9500'; // Orange for 10% or less
-    return '#34C759'; // Green for 90%+
+    return '#34C759'; // Green for normal time
   };
 
   // Format time display (MM:SS)
@@ -37,59 +37,35 @@ const CircularTimer: React.FC<CircularTimerProps> = ({
     return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // SVG circle calculations
-  const size = 120;
-  const strokeWidth = 8;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const strokeDasharray = circumference;
-  const strokeDashoffset = isExpired ? 0 : circumference - (progressPercentage / 100) * circumference;
-
   const displayTime = isExpired ? formatTime(-extraTime) : formatTime(remainTime);
   const progressColor = getProgressColor();
+
+  // Calculate progress angle for clip-path (0-360 degrees)
+  const progressAngle = isExpired ? 360 : (progressPercentage / 100) * 360;
 
   return (
     <div className="circular-timer" onClick={onClick}>
       <div className="circular-timer-container">
-        <svg
-          className="circular-timer-svg"
-          width={size}
-          height={size}
-        >
-          {/* Background circle */}
-          <circle
-            className="circular-timer-bg"
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            strokeWidth={strokeWidth}
-          />
-          
-          {/* Progress circle */}
-          <circle
-            className="circular-timer-progress"
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            strokeWidth={strokeWidth}
-            strokeDasharray={strokeDasharray}
-            strokeDashoffset={strokeDashoffset}
-            style={{ stroke: progressColor }}
-          />
-        </svg>
-        
+        {/* Progress ring */}
+        <div 
+          className="progress-ring"
+          style={{
+            '--progress-angle': `${progressAngle}deg`,
+            '--progress-color': progressColor
+          } as React.CSSProperties}
+        ></div>
         {/* Center content */}
         <div className="circular-timer-content">
           {isPaused ? (
             <div className="pause-indicator">
-              {/* Background time display */}
-              <div className="timer-text paused-bg">
+              {/* Normal time display - no blur/opacity */}
+              <div className="timer-text">
                 {displayTime}
               </div>
-              <div className="timer-label paused-bg">
+              <div className="timer-label">
                 {isExpired ? 'Overtime' : 'Remaining'}
               </div>
-              {/* Triangle overlay with transparency */}
+              {/* Large transparent triangle overlay */}
               <div className="triangle-play"></div>
             </div>
           ) : (
