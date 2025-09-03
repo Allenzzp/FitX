@@ -1,0 +1,155 @@
+/* Circular Timer Component */
+.circular-timer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.1s ease;
+}
+
+.circular-timer:hover {
+  transform: scale(1.02);
+}
+
+.circular-timer:active {
+  transform: scale(0.98);
+}
+
+.circular-timer-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.circular-timer-svg {
+  transform: rotate(-90deg); /* Start progress from top */
+}
+
+.circular-timer-bg {
+  fill: none;
+  stroke: #E5E5EA;
+  stroke-linecap: round;
+}
+
+.circular-timer-progress {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s ease-in-out, stroke 0.3s ease;
+}
+
+.circular-timer-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.timer-text {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #2C2C2E;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+}
+
+.timer-text.overtime {
+  color: #FF3B30;
+}
+
+.timer-label {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #6E6E73;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0.25rem 0 0 0;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Pause indicator (triangle play button) */
+.pause-indicator {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.paused-bg {
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.triangle-play {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 16px solid rgba(44, 44, 46, 0.8);
+  border-top: 12px solid transparent;
+  border-bottom: 12px solid transparent;
+  margin-left: 4px; /* Slight offset for visual centering */
+  z-index: 2;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .circular-timer-svg {
+    width: 100px;
+    height: 100px;
+  }
+  
+  .timer-text {
+    font-size: 1rem;
+  }
+  
+  .timer-label {
+    font-size: 0.6rem;
+  }
+  
+  .triangle-play {
+    border-left: 12px solid rgba(44, 44, 46, 0.8);
+    border-top: 9px solid transparent;
+    border-bottom: 9px solid transparent;
+    margin-left: 3px;
+  }
+}
+
+/* Desktop enhancements */
+@media (min-width: 768px) {
+  .circular-timer-svg {
+    width: 220px;
+    height: 220px;
+  }
+  
+  .timer-text {
+    font-size: 1.8rem;
+    line-height: 1;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .timer-label {
+    font-size: 0.75rem;
+  }
+  
+  .triangle-play {
+    border-left: 20px solid rgba(44, 44, 46, 0.8);
+    border-top: 15px solid transparent;
+    border-bottom: 15px solid transparent;
+    margin-left: 5px;
+  }
+}

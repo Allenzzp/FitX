@@ -164,6 +164,68 @@
   box-sizing: border-box;
 }
 
+/* Side-by-side layout container */
+.progress-timer-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+/* Left side: Jumps remaining */
+.jumps-section {
+  flex: 1;
+  width: 50%;
+  text-align: center;
+}
+
+/* Right side: Timer */
+.timer-section {
+  flex: 1;
+  width: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Desktop enhancement for side-by-side layout */
+@media (min-width: 768px) {
+  .progress-timer-container {
+    gap: 2rem;
+    margin-bottom: 2rem;
+  }
+  
+  .jumps-section {
+    flex: 1;
+    width: 50%;
+  }
+  
+  .timer-section {
+    flex: 1;
+    width: 50%;
+  }
+}
+
+/* Mobile responsiveness for side-by-side layout */
+@media (max-width: 480px) {
+  .progress-timer-container {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  
+  .jumps-section {
+    order: 1;
+    width: 100%;
+  }
+  
+  .timer-section {
+    order: 2;
+    width: 100%;
+  }
+}
+
 .main-number {
   font-size: 4rem;
   font-weight: 200;

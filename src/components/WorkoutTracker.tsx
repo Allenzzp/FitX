@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import WeeklyChart from './WeeklyChart';
 import TimerPicker from './TimerPicker';
+import CircularTimer from './CircularTimer';
 import { RepPatternsManager } from '../utils/repPatternsManager';
 import './WorkoutTracker.css';
 
@@ -70,6 +71,10 @@ const WorkoutTracker: React.FC = () => {
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const [showTimerExpiredModal, setShowTimerExpiredModal] = useState(false);
   
+  // Refs for timer to access current values without stale closures
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionStatusRef = useRef<string | null>(null);
+  
   // Separate timer state - independent from session state
   const [timerState, setTimerState] = useState<{
     remainTime: number;
@@ -104,8 +109,19 @@ const WorkoutTracker: React.FC = () => {
     return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Handle circular timer click for pause/resume
+  const handleTimerClick = () => {
+    if (!currentSession) return;
+    
+    if (currentSession.status === 'active') {
+      pauseWorkout();
+    } else if (currentSession.status === 'paused') {
+      resumeWorkout();
+    }
+  };
+
   // Start countdown timer with separate state
-  const startCountdownTimer = (sessionId: string, initialTimerData?: { remainTime: number; timerExpired: boolean; extraTime: number }, sessionData?: TrainingSession) => {
+  const startCountdownTimer = (sessionId: string, initialTimerData?: { remainTime: number; timerExpired: boolean; extraTime: number }) => {
     if (timerInterval) {
       clearInterval(timerInterval);
     }
@@ -115,13 +131,16 @@ const WorkoutTracker: React.FC = () => {
       setTimerState(initialTimerData);
     }
 
+    // Update refs for timer access
+    sessionIdRef.current = sessionId;
+    sessionStatusRef.current = currentSession?.status || null;
+
     const interval = setInterval(async () => {
       setTimerState((prevTimer) => {
         // Use initialTimerData as fallback if prevTimer is not yet set
         const currentTimer = prevTimer || initialTimerData;
-        // Use passed sessionData if available, otherwise fall back to currentSession
-        const session = sessionData || currentSession;
-        if (!currentTimer || !session?.status || session.status !== 'active') {
+        // Check session is active using refs (avoids stale closure issue)
+        if (!currentTimer || !sessionIdRef.current || sessionStatusRef.current !== 'active') {
           return prevTimer;
         }
 
@@ -190,6 +209,17 @@ const WorkoutTracker: React.FC = () => {
       stopCountdownTimer();
     };
   }, []);  // Remove currentSession dependency to prevent infinite loop
+
+  // Keep refs in sync with current session for timer access
+  useEffect(() => {
+    if (currentSession) {
+      sessionIdRef.current = currentSession._id;
+      sessionStatusRef.current = currentSession.status;
+    } else {
+      sessionIdRef.current = null;
+      sessionStatusRef.current = null;
+    }
+  }, [currentSession]);
 
   // Separate effect for beforeunload handler to access current state
   useEffect(() => {
@@ -428,11 +458,14 @@ const WorkoutTracker: React.FC = () => {
         
         // Initialize timer state from backend data ONLY if timer state doesn't already exist
         if (response.data.sessionLen && !timerState) {
+          // Use backend data if available, otherwise fallback to full session length
           const initialTimerState = {
-            remainTime: response.data.remainTime || response.data.sessionLen,
+            remainTime: typeof response.data.remainTime === 'number' ? response.data.remainTime : response.data.sessionLen,
             timerExpired: response.data.timerExpired || false,
             extraTime: response.data.extraTime || 0
           };
+          
+          console.log('Initializing timer from backend:', initialTimerState);
           setTimerState(initialTimerState);
           
           // Start countdown timer immediately if session is active
@@ -444,6 +477,7 @@ const WorkoutTracker: React.FC = () => {
           }
         } else if (response.data.sessionLen && timerState && response.data.status === "active") {
           // Timer state exists but countdown might not be running - just start countdown
+          console.log('Restarting timer with existing state:', timerState);
           startCountdownTimer(response.data._id, timerState);
         }
         
@@ -524,7 +558,7 @@ const WorkoutTracker: React.FC = () => {
           timerExpired: false,
           extraTime: 0
         });
-        startCountdownTimer(response.data._id, undefined, response.data);
+        startCountdownTimer(response.data._id);
       }
       
       // Start auto-pause timer for new session
@@ -814,7 +848,7 @@ const WorkoutTracker: React.FC = () => {
       startAutoPauseTimer(response.data._id);
       // Restart countdown timer if session has timer
       if (response.data.sessionLen) {
-        startCountdownTimer(response.data._id, undefined, response.data);
+        startCountdownTimer(response.data._id);
       }
     } catch (error) {
       console.error('Failed to resume workout:', error);
@@ -844,7 +878,7 @@ const WorkoutTracker: React.FC = () => {
       startAutoPauseTimer(response.data._id);
       // Restart countdown timer if session has timer
       if (response.data.sessionLen) {
-        startCountdownTimer(response.data._id, undefined, response.data);
+        startCountdownTimer(response.data._id);
       }
     } catch (error) {
       console.error('Failed to resume to last activity:', error);
@@ -1230,37 +1264,39 @@ const WorkoutTracker: React.FC = () => {
     <div className="workout-container">
       <TestingControls />
       <div className="progress-display">
-        <div className="remaining-label">
-          {isComplete ? 'Goal Achieved!' : 
-           currentSession.status === "paused" ? 'Session Paused - Jumps remaining' : 
-           'Jumps remaining'}
-        </div>
-        <div className="main-number">
-          {isComplete ? '🎉' : remaining.toLocaleString()}
-        </div>
-        
-        {/* Timer Display */}
-        {currentSession.sessionLen && timerState && (
-          <div className="timer-display">
-            <div className="timer-label">
-              {timerState.timerExpired ? 'Overtime' : 'Time Remaining'}
+        {/* Side-by-side layout: Jumps remaining (left) + Timer (right) */}
+        <div className="progress-timer-container">
+          {/* Left side: Jumps remaining */}
+          <div className="jumps-section">
+            <div className="remaining-label">
+              {isComplete ? 'Goal Achieved!' : 
+               currentSession.status === "paused" ? 'Session Paused - Jumps remaining' : 
+               'Jumps remaining'}
             </div>
-            <div className={`timer-value ${
-              timerState.timerExpired ? 'overtime' : 
-              timerState.remainTime <= 300 ? 'warning' : ''
-            }`}>
-              {timerState.timerExpired 
-                ? formatTime(-timerState.extraTime)
-                : formatTime(timerState.remainTime)
-              }
+            <div className="main-number">
+              {isComplete ? '🎉' : remaining.toLocaleString()}
+            </div>
+            <div className="goal-progress">
+              {currentSession.completed.toLocaleString()} / {currentSession.goal.toLocaleString()}
             </div>
           </div>
-        )}
+          
+          {/* Right side: Circular Timer */}
+          {currentSession.sessionLen && timerState && (
+            <div className="timer-section">
+              <CircularTimer
+                remainTime={timerState.remainTime}
+                totalTime={currentSession.sessionLen}
+                isExpired={timerState.timerExpired}
+                extraTime={timerState.extraTime}
+                isPaused={currentSession.status === 'paused'}
+                onClick={handleTimerClick}
+              />
+            </div>
+          )}
+        </div>
         
         <div className="progress-sync-container">
-          <div className="goal-progress">
-            {currentSession.completed.toLocaleString()} / {currentSession.goal.toLocaleString()}
-          </div>
           {needsSync && currentSession.status === "active" && (
             <button 
               className={`sync-btn ${isSyncing ? 'syncing' : ''}`} 
@@ -1377,9 +1413,6 @@ const WorkoutTracker: React.FC = () => {
           {currentSession.status === "active" && (
             <div className="button-group-centered">
               <div className="button-row">
-                <button className="session-btn session-btn--orange" onClick={pauseWorkout}>
-                  Pause Training
-                </button>
                 <button className="session-btn session-btn--red" onClick={endWorkout}>
                   End Training
                 </button>
@@ -1389,9 +1422,12 @@ const WorkoutTracker: React.FC = () => {
           {currentSession.status === "paused" && (
             <div className="button-group-centered">
               <div className="button-row">
-                <button className="session-btn session-btn--green" onClick={resumeWorkout}>
-                  Resume Training
-                </button>
+                {/* Only show Resume Training if no timer exists (click timer to resume when timer exists) */}
+                {!currentSession.sessionLen && (
+                  <button className="session-btn session-btn--green" onClick={resumeWorkout}>
+                    Resume Training
+                  </button>
+                )}
                 <button className="session-btn session-btn--blue" onClick={resumeToLastActivity}>
                   Resume to Last Activity
                 </button>
