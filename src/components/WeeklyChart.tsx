@@ -445,12 +445,12 @@ const WeeklyChart: React.FC = () => {
       {/* Navigation buttons */}
       <div className="chart-navigation">
         {displayedWeek !== currentWeekNumber && (
-          <button className="nav-btn current-week" onClick={navigateToCurrentWeek}>
+          <button className="chart-nav-btn current-week" onClick={navigateToCurrentWeek}>
             Current Week
           </button>
         )}
         {totalWeeksAvailable > 1 && displayedWeek !== 1 && (
-          <button className="nav-btn first-week" onClick={navigateToFirstWeek}>
+          <button className="chart-nav-btn first-week" onClick={navigateToFirstWeek}>
             First Week
           </button>
         )}
