@@ -1277,7 +1277,18 @@ const WorkoutTracker: React.FC = () => {
               {isComplete ? '🎉' : remaining.toLocaleString()}
             </div>
             <div className="goal-progress">
-              {currentSession.completed.toLocaleString()} / {currentSession.goal.toLocaleString()}
+              <span className="progress-text">
+                {currentSession.completed.toLocaleString()} / {currentSession.goal.toLocaleString()}
+              </span>
+              {needsSync && currentSession.status === "active" && (
+                <button 
+                  className={`sync-btn ${isSyncing ? 'syncing' : ''}`} 
+                  onClick={manualSync}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? 'Syncing...' : 'Sync'}
+                </button>
+              )}
             </div>
           </div>
           
@@ -1296,17 +1307,6 @@ const WorkoutTracker: React.FC = () => {
           )}
         </div>
         
-        <div className="progress-sync-container">
-          {needsSync && currentSession.status === "active" && (
-            <button 
-              className={`sync-btn ${isSyncing ? 'syncing' : ''}`} 
-              onClick={manualSync}
-              disabled={isSyncing}
-            >
-              {isSyncing ? 'Syncing...' : 'Sync'}
-            </button>
-          )}
-        </div>
         {isComplete && (
           <div className="achievement-text">
             Congratulations! You completed {currentSession.completed.toLocaleString()} jumps
