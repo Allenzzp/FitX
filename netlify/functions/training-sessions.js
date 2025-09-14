@@ -25,6 +25,15 @@ const calculateTimerStatus = (session) => {
     return null;
   }
 
+  // For paused sessions, use stored paused timer state if available
+  if (session.status === 'paused' && session.pausedTimerState) {
+    return {
+      remainTime: session.pausedTimerState.remainTime,
+      timerExpired: session.pausedTimerState.isExpired,
+      extraTime: session.pausedTimerState.extraTime
+    };
+  }
+
   const now = getCurrentTime();
   const startTime = new Date(session.startTime);
 
@@ -244,7 +253,17 @@ exports.handler = async (event, context) => {
           const now = updateData.pausedAt ? new Date(updateData.pausedAt) : getCurrentTime();
           updateFields.status = "paused";
           updateFields.pausedAt = now;
-          // Timer state is now calculated dynamically - no need to store it
+
+          // Store client timer state for accurate resume
+          if (updateData.clientTimerState) {
+            updateFields.pausedTimerState = {
+              remainTime: updateData.clientTimerState.remainTime,
+              isExpired: updateData.clientTimerState.isExpired,
+              extraTime: updateData.clientTimerState.extraTime,
+              pausedAt: now
+            };
+          }
+
           // End current training segment
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
@@ -258,19 +277,30 @@ exports.handler = async (event, context) => {
           updateFields.status = "active";
           updateFields.pausedAt = null;
           updateFields.lastActivityAt = now;
-          
+
           // Handle time compensation for "resume to last activity" feature
           if (updateData.compensateTime && typeof updateData.compensateTime === 'number') {
             // Store compensation time to be used by timer calculation
             updateFields.timerCompensation = (updateFields.timerCompensation || 0) + updateData.compensateTime;
           }
-          
+
           // Start new training segment
           updateFields.$push = { trainingSegments: { start: now, end: null } };
         } else if (updateData.action === 'autoPause') {
           const now = getCurrentTime();
           updateFields.status = "paused";
           updateFields.pausedAt = now;
+
+          // Store client timer state for accurate auto-pause
+          if (updateData.clientTimerState) {
+            updateFields.pausedTimerState = {
+              remainTime: updateData.clientTimerState.remainTime,
+              isExpired: updateData.clientTimerState.isExpired,
+              extraTime: updateData.clientTimerState.extraTime,
+              pausedAt: now
+            };
+          }
+
           // End current training segment
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
@@ -323,17 +353,26 @@ exports.handler = async (event, context) => {
           }
         }
         
+        // Special handling for resume action: get paused timer state before updating
+        let resumeTimerState = null;
+        if (updateData.action === 'resume') {
+          const currentSession = await collection.findOne({ _id: objectId });
+          if (currentSession && currentSession.pausedTimerState) {
+            resumeTimerState = currentSession.pausedTimerState;
+          }
+        }
+
         let updateOperation = { $set: updateFields };
         if (updateFields.$push) {
           updateOperation.$push = updateFields.$push;
           delete updateFields.$push;
         }
-        
+
         const updateResult = await collection.updateOne(
           { _id: objectId },
           updateOperation
         );
-        
+
         if (updateResult.matchedCount === 0) {
           return {
             statusCode: 404,
@@ -344,9 +383,35 @@ exports.handler = async (event, context) => {
             body: JSON.stringify({ error: 'Session not found' })
           };
         }
-        
+
         const updatedSession = await collection.findOne({ _id: objectId });
-        
+
+        // For resume action: use stored paused timer state and then clear it
+        if (updateData.action === 'resume' && resumeTimerState) {
+          const responseSession = {
+            ...updatedSession,
+            // Override calculated timer with paused state for resume initialization
+            remainTime: resumeTimerState.remainTime,
+            timerExpired: resumeTimerState.isExpired,
+            extraTime: resumeTimerState.extraTime
+          };
+
+          // Clear the paused timer state for future calculations
+          await collection.updateOne(
+            { _id: objectId },
+            { $set: { pausedTimerState: null } }
+          );
+
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(responseSession)
+          };
+        }
+
         return {
           statusCode: 200,
           headers: {

@@ -5,15 +5,6 @@
   justify-content: center;
   cursor: pointer;
   user-select: none;
-  transition: transform 0.1s ease;
-}
-
-.circular-timer:hover {
-  transform: scale(1.02);
-}
-
-.circular-timer:active {
-  transform: scale(0.98);
 }
 
 .circular-timer-container {
@@ -118,6 +109,21 @@
   border-radius: 4px;
   /* Remove shadow - clean triangle only */
   backdrop-filter: blur(0.5px);
+  /* Smooth fade-in animation */
+  opacity: 0;
+  transform: scale(0.8);
+  animation: triangleFadeIn 0.15s ease-out 0.05s forwards;
+}
+
+@keyframes triangleFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Mobile responsiveness */

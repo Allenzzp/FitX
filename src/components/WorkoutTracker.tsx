@@ -70,8 +70,15 @@ const WorkoutTracker: React.FC = () => {
   const [timerMinutes, setTimerMinutes] = useState<number>(60); // Default 60 minutes
   const [showTimerExpiredModal, setShowTimerExpiredModal] = useState(false);
 
-  // Simple timer polling interval (replaces complex timer state system)
-  const [timerPollingInterval, setTimerPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  // Client-side timer state for real-time countdown display
+  const [clientTimer, setClientTimer] = useState<{
+    remainTime: number;
+    isExpired: boolean;
+    extraTime: number;
+    lastSync: number;
+  } | null>(null);
+  const [clientTimerInterval, setClientTimerInterval] = useState<NodeJS.Timeout | null>(null);
+  const [syncInterval, setSyncInterval] = useState<NodeJS.Timeout | null>(null);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -111,40 +118,103 @@ const WorkoutTracker: React.FC = () => {
     }
   };
 
-  // Start timer polling (simple bulletproof approach)
-  const startTimerPolling = () => {
-    if (timerPollingInterval) {
-      clearInterval(timerPollingInterval);
+  // Start client-side timer for real-time countdown
+  const startClientTimer = (initialRemainTime: number, sessionLen: number) => {
+    // Clear existing timer
+    if (clientTimerInterval) {
+      clearInterval(clientTimerInterval);
+    }
+
+    // Initialize client timer state
+    setClientTimer({
+      remainTime: initialRemainTime,
+      isExpired: initialRemainTime <= 0,
+      extraTime: initialRemainTime <= 0 ? Math.abs(initialRemainTime) : 0,
+      lastSync: Date.now()
+    });
+
+    // Start countdown interval
+    const interval = setInterval(() => {
+      setClientTimer(prev => {
+        if (!prev) return null;
+
+        const newRemainTime = prev.remainTime - 1;
+
+        if (newRemainTime <= 0 && prev.remainTime > 0) {
+          // Timer just expired - show modal
+          setShowTimerExpiredModal(true);
+        }
+
+        return {
+          ...prev,
+          remainTime: Math.max(0, newRemainTime),
+          isExpired: newRemainTime <= 0,
+          extraTime: newRemainTime <= 0 ? Math.abs(newRemainTime) : 0
+        };
+      });
+    }, 1000);
+
+    setClientTimerInterval(interval);
+  };
+
+  // Stop client-side timer
+  const stopClientTimer = () => {
+    if (clientTimerInterval) {
+      clearInterval(clientTimerInterval);
+      setClientTimerInterval(null);
+    }
+    setClientTimer(null);
+  };
+
+  // Pause client timer (preserve state, stop countdown)
+  const pauseClientTimer = () => {
+    if (clientTimerInterval) {
+      clearInterval(clientTimerInterval);
+      setClientTimerInterval(null);
+    }
+    // Keep clientTimer state for display during pause
+  };
+
+  // Sync client timer with server (every 30 seconds)
+  const startTimerSync = () => {
+    if (syncInterval) {
+      clearInterval(syncInterval);
     }
 
     const interval = setInterval(async () => {
-      if (currentSession && currentSession.status === 'active' && currentSession.sessionLen) {
+      if (currentSession && currentSession.status === 'active' && currentSession.sessionLen && clientTimer) {
         try {
-          // Fetch fresh timer data from backend
           const response = await axios.get(`${API_BASE}/training-sessions`);
           if (response.data && response.data._id === currentSession._id) {
-            // Update session with real-time timer data
+            // Update session state
             setCurrentSession(response.data);
 
-            // Check for timer expiration
-            if (response.data.timerExpired && !currentSession.timerExpired) {
-              setShowTimerExpiredModal(true);
-            }
+            // Sync client timer with server data
+            const serverRemainTime = response.data.remainTime || 0;
+            const serverExtraTime = response.data.extraTime || 0;
+            const serverExpired = response.data.timerExpired || false;
+
+            setClientTimer(prev => ({
+              remainTime: serverExpired ? 0 : serverRemainTime,
+              isExpired: serverExpired,
+              extraTime: serverExtraTime,
+              lastSync: Date.now()
+            }));
           }
         } catch (error) {
-          console.error('Failed to poll timer data:', error);
+          console.error('Failed to sync timer with server:', error);
         }
       }
-    }, 1000); // Poll every second for smooth countdown
+    }, 30000); // Sync every 30 seconds
 
-    setTimerPollingInterval(interval);
+    setSyncInterval(interval);
   };
 
-  // Stop timer polling
-  const stopTimerPolling = () => {
-    if (timerPollingInterval) {
-      clearInterval(timerPollingInterval);
-      setTimerPollingInterval(null);
+  // Stop timer sync
+  const stopTimerSync = () => {
+    if (syncInterval) {
+      clearInterval(syncInterval);
+      setSyncInterval(null);
     }
   };
 
@@ -191,7 +261,8 @@ const WorkoutTracker: React.FC = () => {
 
     // Cleanup function
     return () => {
-      stopTimerPolling();
+      stopClientTimer();
+      stopTimerSync();
     };
   }, []);  // Remove currentSession dependency to prevent infinite loop
 
@@ -554,10 +625,26 @@ const WorkoutTracker: React.FC = () => {
 
         // Set sync point based on current progress
         setLastSyncPoint(Math.floor(sessionState.session.completed / 500) * 500);
-        
-        // Start timer polling if session has timer and is active
-        if (sessionState.session.sessionLen && sessionState.session.status === "active") {
-          startTimerPolling();
+
+        // Initialize client-side timer based on session state
+        if (sessionState.session.sessionLen) {
+          const remainTime = sessionState.session.remainTime || sessionState.session.sessionLen;
+          const extraTime = sessionState.session.extraTime || 0;
+          const isExpired = sessionState.session.timerExpired || false;
+
+          if (sessionState.session.status === "active") {
+            // Active session: start countdown timer
+            startClientTimer(remainTime, sessionState.session.sessionLen);
+            startTimerSync();
+          } else if (sessionState.session.status === "paused") {
+            // Paused session: initialize client timer state but don't start countdown
+            setClientTimer({
+              remainTime: remainTime,
+              isExpired: isExpired,
+              extraTime: extraTime,
+              lastSync: Date.now()
+            });
+          }
         }
         
         // Start auto-pause timer if session is active
@@ -636,10 +723,11 @@ const WorkoutTracker: React.FC = () => {
       });
       setCurrentSession(response.data);
       setLastSyncPoint(0); // Reset sync point for new session
-      
-      // Start timer polling for new session
+
+      // Start client-side timer for new session
       if (response.data.sessionLen) {
-        startTimerPolling();
+        startClientTimer(response.data.sessionLen, response.data.sessionLen);
+        startTimerSync();
       }
       
       // Start auto-pause timer for new session
@@ -849,15 +937,32 @@ const WorkoutTracker: React.FC = () => {
     const timer = setTimeout(async () => {
       try {
         console.log('Auto-pausing session due to inactivity');
-        await axios.put(`${API_BASE}/training-sessions?id=${sessionId}`, {
+
+        // Include client timer state for accurate auto-pause
+        const autoPauseData: any = {
           action: 'autoPause'
-        });
+        };
+
+        // Include client timer state if available
+        if (clientTimer) {
+          autoPauseData.clientTimerState = {
+            remainTime: clientTimer.remainTime,
+            isExpired: clientTimer.isExpired,
+            extraTime: clientTimer.extraTime
+          };
+        }
+
+        await axios.put(`${API_BASE}/training-sessions?id=${sessionId}`, autoPauseData);
         // Refresh current session to get updated status
         try {
           const response = await axios.get(`${API_BASE}/training-sessions`);
           if (response.data) {
             setCurrentSession(response.data);
             saveSessionToLocalStorage(response.data);
+
+            // Handle client timer state for auto-pause
+            pauseClientTimer();
+            stopTimerSync();
           }
         } catch (error) {
           console.error('Failed to refresh session after auto-pause:', error);
@@ -883,7 +988,7 @@ const WorkoutTracker: React.FC = () => {
 
   const pauseWorkout = async () => {
     if (!currentSession) return;
-    
+
     try {
       // Sync rep patterns before pausing
       try {
@@ -892,16 +997,28 @@ const WorkoutTracker: React.FC = () => {
       } catch (error) {
         console.error('Failed to sync rep patterns on pause:', error);
       }
-      
-      const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
+
+      // Send current client timer state to backend for accurate pause
+      const pauseData: any = {
         action: 'pause'
-        // Timer state is now calculated server-side - no need to send it
-      });
+      };
+
+      // Include client timer state if available
+      if (clientTimer) {
+        pauseData.clientTimerState = {
+          remainTime: clientTimer.remainTime,
+          isExpired: clientTimer.isExpired,
+          extraTime: clientTimer.extraTime
+        };
+      }
+
+      const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, pauseData);
       setCurrentSession(response.data);
       // Update localStorage with paused status
       saveSessionToLocalStorage(response.data);
       clearAutoPauseTimer(); // Stop auto-pause timer when manually paused
-      stopTimerPolling(); // Stop timer polling when paused
+      pauseClientTimer(); // Pause client timer (preserve state, stop countdown)
+      stopTimerSync(); // Stop timer sync when paused
     } catch (error) {
       console.error('Failed to pause workout:', error);
     }
@@ -909,7 +1026,7 @@ const WorkoutTracker: React.FC = () => {
 
   const resumeWorkout = async () => {
     if (!currentSession) return;
-    
+
     try {
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'resume'
@@ -919,9 +1036,11 @@ const WorkoutTracker: React.FC = () => {
       saveSessionToLocalStorage(response.data);
       // Start auto-pause timer when resuming
       startAutoPauseTimer(response.data._id);
-      // Start timer polling if session has timer
+      // Start client timer if session has timer
       if (response.data.sessionLen) {
-        startTimerPolling();
+        const remainTime = response.data.remainTime || response.data.sessionLen;
+        startClientTimer(remainTime, response.data.sessionLen);
+        startTimerSync();
       }
 
       // Initialize rep patterns for resumed training period (Bug-1 fix)
@@ -957,9 +1076,11 @@ const WorkoutTracker: React.FC = () => {
       saveSessionToLocalStorage(response.data);
       // Start auto-pause timer when resuming
       startAutoPauseTimer(response.data._id);
-      // Start timer polling if session has timer
+      // Start client timer if session has timer
       if (response.data.sessionLen) {
-        startTimerPolling();
+        const remainTime = response.data.remainTime || response.data.sessionLen;
+        startClientTimer(remainTime, response.data.sessionLen);
+        startTimerSync();
       }
 
       // Initialize rep patterns for resumed training period (Bug-1 fix)
@@ -1023,8 +1144,9 @@ const WorkoutTracker: React.FC = () => {
       
       // Clear auto-pause timer when session ends
       clearAutoPauseTimer();
-      // Clear countdown timer when session ends
-      stopTimerPolling();
+      // Clear client timer when session ends
+      stopClientTimer();
+      stopTimerSync();
       
       // Refresh test data status after session ends
       await checkForTestData();
@@ -1380,10 +1502,10 @@ const WorkoutTracker: React.FC = () => {
           {currentSession.sessionLen && (
             <div className="timer-section">
               <CircularTimer
-                remainTime={currentSession.remainTime || currentSession.sessionLen}
+                remainTime={clientTimer?.remainTime || currentSession.remainTime || currentSession.sessionLen}
                 totalTime={currentSession.sessionLen}
-                isExpired={currentSession.timerExpired || false}
-                extraTime={currentSession.extraTime || 0}
+                isExpired={clientTimer?.isExpired || currentSession.timerExpired || false}
+                extraTime={clientTimer?.extraTime || currentSession.extraTime || 0}
                 isPaused={currentSession.status === 'paused'}
                 onClick={handleTimerClick}
               />
