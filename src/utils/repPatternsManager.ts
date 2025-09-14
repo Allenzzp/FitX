@@ -20,41 +20,36 @@ export class RepPatternsManager {
 
   /**
    * Initialize the rep patterns manager by fetching from DB and setting up localStorage
+   * Always fetches fresh patterns from DB for new training periods
    */
   async initialize(): Promise<void> {
-    if (this.initialized) return;
-
     try {
-      // Fetch user's top 3 patterns from database
+      // Always fetch fresh patterns from database for each training period
       const response = await axios.get(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`);
-      
+
       if (response.data && response.data.topThreeReps) {
-        // Initialize localStorage with DB patterns (value = 2 for established patterns)
+        // Clear localStorage and initialize with fresh DB patterns (value = 2 for established patterns)
+        this.patterns = {};
         const dbPatterns: RepPatterns = {};
         response.data.topThreeReps.forEach((rep: number) => {
           dbPatterns[rep.toString()] = 2;
         });
-        
+
         this.patterns = dbPatterns;
         this.saveToLocalStorage();
-        
-        console.log('Initialized rep patterns from DB:', response.data.topThreeReps);
       } else {
         // No existing patterns, start with empty localStorage
         this.patterns = {};
         this.saveToLocalStorage();
-        
-        console.log('No existing rep patterns found, starting fresh');
       }
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         // User has no patterns yet - this is normal for first-time users
         this.patterns = {};
         this.saveToLocalStorage();
-        console.log('First-time user, no rep patterns in DB');
       } else {
         console.error('Failed to initialize rep patterns:', error);
-        // Fallback to localStorage only
+        // Fallback to localStorage only if DB is unavailable
         this.loadFromLocalStorage();
       }
     }
@@ -99,11 +94,8 @@ export class RepPatternsManager {
    * @param repCount The number of reps added
    */
   trackRepUsage(repCount: number): void {
-    console.log('=== trackRepUsage called with:', repCount);
-    
     // Don't track the default 100 as per requirements
     if (repCount === 100) {
-      console.log('Skipping tracking for default value 100');
       return;
     }
 
@@ -112,18 +104,12 @@ export class RepPatternsManager {
     if (this.patterns[repKey]) {
       // Existing pattern: increment usage
       this.patterns[repKey] += 1;
-      console.log(`Incremented existing pattern ${repKey}: ${this.patterns[repKey] - 1} -> ${this.patterns[repKey]}`);
     } else {
       // New pattern: start with value 1 (must prove itself)
       this.patterns[repKey] = 1;
-      console.log(`Created new pattern ${repKey} with initial value 1`);
     }
 
     this.saveToLocalStorage();
-    
-    console.log('Updated patterns object:', this.patterns);
-    console.log('Patterns that meet threshold (>=3):', 
-      Object.entries(this.patterns).filter(([,freq]) => freq >= 3));
   }
 
   /**
@@ -131,8 +117,6 @@ export class RepPatternsManager {
    * Confidence threshold only applies when we already have established top 3 patterns
    */
   async syncToDatabase(): Promise<void> {
-    console.log('=== RepPatternsManager.syncToDatabase() called ===');
-    console.log('Current patterns:', this.patterns);
     
     try {
       // First, check if we have existing top 3 patterns in DB
@@ -150,21 +134,15 @@ export class RepPatternsManager {
         // 404 means no existing patterns - hasEstablishedPatterns stays false
       }
 
-      console.log('Has established patterns (3 in DB):', hasEstablishedPatterns);
-      console.log('Current DB patterns:', currentDbPatterns);
-
       // Get all valid patterns (excluding default 100)
       const allPatterns = Object.entries(this.patterns)
         .filter(([rep]) => parseInt(rep) !== 100)
         .sort(([,a], [,b]) => b - a); // Sort by frequency (highest first)
 
-      console.log('All valid patterns:', allPatterns);
-
       let topThree: number[];
 
       if (!hasEstablishedPatterns) {
         // No established patterns yet - any new patterns qualify immediately
-        console.log('No established patterns - accepting any new patterns');
         if (allPatterns.length === 0) {
           topThree = [];
         } else if (allPatterns.length <= 3) {
@@ -191,19 +169,13 @@ export class RepPatternsManager {
         }
       } else {
         // We have established patterns - apply confidence threshold (>=3 uses) for new patterns
-        console.log('Established patterns exist - applying confidence threshold');
         const qualifiedPatterns = allPatterns.filter(([, freq]) => freq >= 3);
-        
-        console.log('Qualified patterns (freq >= 3):', qualifiedPatterns);
 
         if (qualifiedPatterns.length === 0) {
           // No new qualified patterns - keep existing DB patterns
-          console.log('No qualified patterns, keeping existing DB patterns:', currentDbPatterns);
           topThree = currentDbPatterns;
         } else {
-          // Bug 4 fix: Include existing DB patterns and merge with new qualified patterns
-          console.log('Merging existing DB patterns with new qualified patterns');
-          
+          // Include existing DB patterns and merge with new qualified patterns
           // Create a frequency map that includes both current DB patterns and qualified new patterns
           const mergedPatterns = new Map<number, number>();
           
@@ -231,26 +203,14 @@ export class RepPatternsManager {
             .slice(0, 3);
             
           topThree = sortedMerged.map(([rep]) => rep).sort((a, b) => a - b);
-          console.log('Final merged top 3:', topThree);
         }
       }
 
       // Update database with new top 3
-      console.log('Final topThree to sync:', topThree);
-      
       if (topThree.length > 0) {
-        console.log('Syncing to database...');
-        console.log('Request payload:', { topThreeReps: topThree });
-        
-        const response = await axios.put(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`, {
+        await axios.put(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`, {
           topThreeReps: topThree
         });
-        
-        console.log('Database sync response:', response.status, response.data);
-        console.log('Successfully synced new top 3 patterns to DB:', topThree);
-      } else {
-        console.log('No patterns to sync (topThree is empty)');
-        console.log('This could be why only 1 rep is showing in DB - no patterns qualified for sync');
       }
 
     } catch (error) {
@@ -267,9 +227,9 @@ export class RepPatternsManager {
   }
 
   /**
-   * Load patterns from localStorage (fallback)
+   * Load patterns from localStorage (for refresh recovery)
    */
-  private loadFromLocalStorage(): void {
+  loadFromLocalStorage(): void {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       this.patterns = stored ? JSON.parse(stored) : {};
@@ -293,6 +253,38 @@ export class RepPatternsManager {
    */
   getCurrentPatterns(): RepPatterns {
     return { ...this.patterns };
+  }
+
+  /**
+   * Re-fetch patterns from database and update localStorage (Bug-1 fix)
+   * Called after syncToDatabase to ensure localStorage shows only DB patterns
+   */
+  private async refreshFromDatabase(): Promise<void> {
+    try {
+      const response = await axios.get(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`);
+      
+      // Clear localStorage and reset with fresh DB patterns
+      this.patterns = {};
+      
+      if (response.data && response.data.topThreeReps) {
+        response.data.topThreeReps.forEach((rep: number) => {
+          this.patterns[rep.toString()] = 2; // DB patterns get value 2
+        });
+      }
+      
+      this.saveToLocalStorage();
+    } catch (error) {
+      console.error('Failed to refresh patterns from database:', error);
+      // Don't throw - this is a non-critical refresh operation
+    }
+  }
+
+  /**
+   * Refresh patterns from database (Bug-1 fix)
+   * Call this when starting a new session to get fresh DB patterns
+   */
+  async refreshPatternsFromDatabase(): Promise<void> {
+    await this.refreshFromDatabase();
   }
 
   /**

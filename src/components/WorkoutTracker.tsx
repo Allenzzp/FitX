@@ -68,19 +68,10 @@ const WorkoutTracker: React.FC = () => {
   const [isRepInputFocused, setIsRepInputFocused] = useState(false);
   const [isInteractingWithButtons, setIsInteractingWithButtons] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState<number>(60); // Default 60 minutes
-  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const [showTimerExpiredModal, setShowTimerExpiredModal] = useState(false);
-  
-  // Refs for timer to access current values without stale closures
-  const sessionIdRef = useRef<string | null>(null);
-  const sessionStatusRef = useRef<string | null>(null);
-  
-  // Separate timer state - independent from session state
-  const [timerState, setTimerState] = useState<{
-    remainTime: number;
-    timerExpired: boolean;
-    extraTime: number;
-  } | null>(null);
+
+  // Simple timer polling interval (replaces complex timer state system)
+  const [timerPollingInterval, setTimerPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -120,106 +111,90 @@ const WorkoutTracker: React.FC = () => {
     }
   };
 
-  // Start countdown timer with separate state
-  const startCountdownTimer = (sessionId: string, initialTimerData?: { remainTime: number; timerExpired: boolean; extraTime: number }) => {
-    if (timerInterval) {
-      clearInterval(timerInterval);
+  // Start timer polling (simple bulletproof approach)
+  const startTimerPolling = () => {
+    if (timerPollingInterval) {
+      clearInterval(timerPollingInterval);
     }
-
-    // Initialize timer state if provided (for session recovery)
-    if (initialTimerData && !timerState) {
-      setTimerState(initialTimerData);
-    }
-
-    // Update refs for timer access
-    sessionIdRef.current = sessionId;
-    sessionStatusRef.current = currentSession?.status || null;
 
     const interval = setInterval(async () => {
-      setTimerState((prevTimer) => {
-        // Use initialTimerData as fallback if prevTimer is not yet set
-        const currentTimer = prevTimer || initialTimerData;
-        // Check session is active using refs (avoids stale closure issue)
-        if (!currentTimer || !sessionIdRef.current || sessionStatusRef.current !== 'active') {
-          return prevTimer;
-        }
+      if (currentSession && currentSession.status === 'active' && currentSession.sessionLen) {
+        try {
+          // Fetch fresh timer data from backend
+          const response = await axios.get(`${API_BASE}/training-sessions`);
+          if (response.data && response.data._id === currentSession._id) {
+            // Update session with real-time timer data
+            setCurrentSession(response.data);
 
-        const currentRemainTime = currentTimer.remainTime;
-        
-        if (!currentTimer.timerExpired && currentRemainTime > 0) {
-          // Normal countdown
-          const newRemainTime = currentRemainTime - 1;
-          
-          if (newRemainTime <= 0) {
-            // Timer just expired
-            setShowTimerExpiredModal(true);
-            return {
-              ...currentTimer,
-              remainTime: 0,
-              timerExpired: true
-            };
+            // Check for timer expiration
+            if (response.data.timerExpired && !currentSession.timerExpired) {
+              setShowTimerExpiredModal(true);
+            }
           }
-          
-          return {
-            ...currentTimer,
-            remainTime: newRemainTime
-          };
-        } else if (currentTimer.timerExpired) {
-          // Overtime counting
-          return {
-            ...currentTimer,
-            extraTime: currentTimer.extraTime + 1
-          };
+        } catch (error) {
+          console.error('Failed to poll timer data:', error);
         }
-        
-        return prevTimer;
-      });
-    }, 1000);
+      }
+    }, 1000); // Poll every second for smooth countdown
 
-    setTimerInterval(interval);
+    setTimerPollingInterval(interval);
   };
 
-  // Stop countdown timer
-  const stopCountdownTimer = () => {
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      setTimerInterval(null);
+  // Stop timer polling
+  const stopTimerPolling = () => {
+    if (timerPollingInterval) {
+      clearInterval(timerPollingInterval);
+      setTimerPollingInterval(null);
+    }
+  };
+
+  // Sequential application initialization to prevent race conditions
+  const initializeApplication = async () => {
+    try {
+      // Step 1: Run backup cleanup (non-critical, don't block on errors)
+      try {
+        await runBackupCleanup();
+      } catch (error) {
+        console.error('Backup cleanup failed, continuing initialization:', error);
+      }
+
+      // Step 2: Try to recover session from localStorage first
+      const localRecoverySuccess = attemptLocalRecovery();
+
+      // Step 3: Fetch current session from backend (critical step)
+      const backendSession = await fetchCurrentSessionSafely();
+
+      // Step 4: Validate and reconcile local vs backend state
+      const finalSessionState = reconcileSessionState(localRecoverySuccess, backendSession);
+
+      // Step 5: Determine if this is refresh recovery
+      const isRefreshRecovery = localRecoverySuccess.hasLocalSession && finalSessionState.session;
+
+      // Step 6: Initialize non-critical features
+      await initializeSecondaryFeatures(isRefreshRecovery);
+
+      // Step 7: Apply final validated session state
+      applyValidatedSessionState(finalSessionState);
+
+    } catch (error) {
+      console.error('Application initialization failed:', error);
+      // Graceful fallback: ensure app can still function
+      setLoading(false);
+      setCurrentSession(null);
+      setIsStarted(false);
     }
   };
 
   useEffect(() => {
-    // Run backup cleanup check first, then check for session recovery and fetch current session
-    runBackupCleanup().then(async () => {
-      checkSessionRecovery();
-      fetchCurrentSession();
-      checkForTestData();
-      fetchCommonGoals();
-      
-      // Initialize rep patterns manager
-      try {
-        await repPatternsManager.initialize();
-        updateQuickRepOptions();
-      } catch (error) {
-        console.error('Failed to initialize rep patterns:', error);
-      }
-    });
+    // Sequential initialization to prevent race conditions
+    initializeApplication();
 
     // Cleanup function
     return () => {
-      stopCountdownTimer();
+      stopTimerPolling();
     };
   }, []);  // Remove currentSession dependency to prevent infinite loop
 
-  // Keep refs in sync with current session for timer access
-  useEffect(() => {
-    if (currentSession) {
-      sessionIdRef.current = currentSession._id;
-      sessionStatusRef.current = currentSession.status;
-    } else {
-      sessionIdRef.current = null;
-      sessionStatusRef.current = null;
-    }
-  }, [currentSession]);
 
   // Separate effect for beforeunload handler to access current state
   useEffect(() => {
@@ -227,13 +202,8 @@ const WorkoutTracker: React.FC = () => {
       if (currentSession?.status === 'active') {
         // Use navigator.sendBeacon for reliable request during page unload
         const pauseData = JSON.stringify({
-          action: 'pause',
-          // Include current timer state when auto-pausing on tab close
-          ...(timerState && {
-            remainTime: timerState.remainTime,
-            timerExpired: timerState.timerExpired,
-            extraTime: timerState.extraTime
-          })
+          action: 'pause'
+          // Timer state is now calculated server-side - no need to send it
         });
         
         navigator.sendBeacon(
@@ -248,7 +218,7 @@ const WorkoutTracker: React.FC = () => {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [currentSession, timerState]);
+  }, [currentSession]);
 
   const handleBackClick = () => {
     navigate('/');
@@ -263,29 +233,36 @@ const WorkoutTracker: React.FC = () => {
     await checkForTestData();
   };
 
-  const checkSessionRecovery = () => {
+  // Safe local session recovery - returns recovery state info
+  const attemptLocalRecovery = () => {
     try {
       const sessionData = localStorage.getItem('activeSession');
-      if (sessionData) {
-        const { sessionId, timestamp, status, hasTimer } = JSON.parse(sessionData);
-        const now = Date.now();
-        const timeDiff = now - timestamp;
-        const tenMinutes = 10 * 60 * 1000;
-        
-        // If within 10 minutes and session was active, keep UI in active state
-        // If more than 10 minutes or session was paused, will be handled by fetchCurrentSession
-        if (timeDiff <= tenMinutes && status === 'active') {
-          console.log('Recovering active session within 10 minutes', hasTimer ? 'with timer' : 'without timer');
-          setIsStarted(true);
-        } else if (status === 'paused') {
-          console.log('Recovering paused session', hasTimer ? 'with timer' : 'without timer');
-          setIsStarted(true);
-        }
+      if (!sessionData) {
+        return { hasLocalSession: false, shouldRecover: false };
       }
+
+      const { sessionId, timestamp, status, hasTimer, testing } = JSON.parse(sessionData);
+      const now = Date.now();
+      const timeDiff = now - timestamp;
+      const tenMinutes = 10 * 60 * 1000;
+
+      // Determine if we should recover based on localStorage data
+      const shouldRecover = (timeDiff <= tenMinutes && status === 'active') || status === 'paused';
+
+      return {
+        hasLocalSession: true,
+        shouldRecover,
+        sessionId,
+        status,
+        hasTimer,
+        testing: testing || false, // Include testing mode from localStorage
+        timeDiff
+      };
     } catch (error) {
-      console.error('Failed to recover session:', error);
+      console.error('Failed to parse localStorage session data:', error);
       // Clear invalid session data
       localStorage.removeItem('activeSession');
+      return { hasLocalSession: false, shouldRecover: false };
     }
   };
 
@@ -295,7 +272,8 @@ const WorkoutTracker: React.FC = () => {
         sessionId: session._id,
         timestamp: Date.now(),
         status: session.status,
-        hasTimer: !!session.sessionLen // Track whether session has a timer
+        hasTimer: !!session.sessionLen, // Track whether session has a timer
+        testing: session.testing || false // Store testing mode for recovery validation
       }));
     } else {
       localStorage.removeItem('activeSession');
@@ -438,7 +416,18 @@ const WorkoutTracker: React.FC = () => {
       console.log('Test data deleted successfully');
       
       // Refresh current session in case it was a test session
-      await fetchCurrentSession();
+      try {
+        const response = await axios.get(`${API_BASE}/training-sessions`);
+        if (response.data) {
+          setCurrentSession(response.data);
+          saveSessionToLocalStorage(response.data);
+        } else {
+          setCurrentSession(null);
+          saveSessionToLocalStorage(null);
+        }
+      } catch (error) {
+        console.error('Failed to refresh current session:', error);
+      }
       
       // Force chart refresh by changing its key
       setChartKey(prev => prev + 1);
@@ -447,52 +436,149 @@ const WorkoutTracker: React.FC = () => {
     }
   };
 
-  const fetchCurrentSession = async () => {
+  // Safe backend session fetch - doesn't modify state directly
+  const fetchCurrentSessionSafely = async () => {
     try {
       const response = await axios.get(`${API_BASE}/training-sessions`);
-      if (response.data) {
-        setCurrentSession(response.data);
+      return {
+        success: true,
+        session: response.data || null,
+        error: null
+      };
+    } catch (error) {
+      console.error('Failed to fetch current session:', error);
+      return {
+        success: false,
+        session: null,
+        error: error
+      };
+    }
+  };
+
+  // Validate and reconcile local vs backend session state
+  const reconcileSessionState = (localRecovery: any, backendResult: any) => {
+    // If backend fetch failed, rely on local recovery if available
+    if (!backendResult.success) {
+      if (localRecovery.shouldRecover) {
+        return {
+          shouldSetStarted: true,
+          session: null, // We'll let user retry backend later
+          useLocalRecovery: true,
+          error: 'Backend unavailable, using local recovery'
+        };
+      }
+      return {
+        shouldSetStarted: false,
+        session: null,
+        useLocalRecovery: false,
+        error: 'Backend unavailable, no local session to recover'
+      };
+    }
+
+    // Backend is available - use backend data as source of truth
+    const backendSession = backendResult.session;
+    
+    if (backendSession) {
+      // Validate session data consistency
+      if (!backendSession._id || !backendSession.goal || backendSession.status === undefined) {
+        console.error('Invalid session data from backend:', backendSession);
+        return {
+          shouldSetStarted: false,
+          session: null,
+          useLocalRecovery: false,
+          error: 'Invalid backend session data'
+        };
+      }
+      
+      return {
+        shouldSetStarted: true,
+        session: backendSession,
+        useLocalRecovery: false,
+        localTestingMode: localRecovery.testing, // Pass localStorage testing mode as fallback
+        error: null
+      };
+    }
+
+    // No backend session - clear any stale local data
+    return {
+      shouldSetStarted: false,
+      session: null,
+      useLocalRecovery: false,
+      error: null
+    };
+  };
+
+  // Initialize non-critical secondary features
+  const initializeSecondaryFeatures = async (isRefreshRecovery = false) => {
+    // These features should not block app loading if they fail
+    const promises = [
+      checkForTestData().catch(error => console.error('Test data check failed:', error)),
+      fetchCommonGoals().catch(error => console.error('Common goals fetch failed:', error))
+    ];
+
+    // Only initialize rep patterns if NOT recovering from refresh (preserve session patterns)
+    if (!isRefreshRecovery) {
+      promises.push(
+        repPatternsManager.initialize()
+          .then(() => updateQuickRepOptions())
+          .catch(error => console.error('Rep patterns init failed:', error))
+      );
+    } else {
+      // For refresh recovery, load patterns from localStorage and update quick rep options
+      try {
+        repPatternsManager.loadFromLocalStorage();
+        updateQuickRepOptions();
+      } catch (error) {
+        console.error('Failed to load patterns from localStorage during recovery:', error);
+      }
+    }
+
+    // Wait for all but don't fail if any individual feature fails
+    await Promise.allSettled(promises);
+  };
+
+  // Apply final validated session state to component
+  const applyValidatedSessionState = (sessionState: any) => {
+    try {
+      if (sessionState.session) {
+        setCurrentSession(sessionState.session);
         setIsStarted(true);
-        // Set sync point based on current progress for existing sessions
-        setLastSyncPoint(Math.floor(response.data.completed / 500) * 500);
+
+        // Restore testing mode from session data with localStorage fallback (Bug-3 fix)
+        if (sessionState.session.testing !== undefined) {
+          setIsTestingMode(sessionState.session.testing);
+        } else if (sessionState.localTestingMode !== undefined) {
+          // Fallback to localStorage testing mode if backend doesn't have it
+          setIsTestingMode(sessionState.localTestingMode);
+        }
+
+        // Set sync point based on current progress
+        setLastSyncPoint(Math.floor(sessionState.session.completed / 500) * 500);
         
-        // Initialize timer state from backend data ONLY if timer state doesn't already exist
-        if (response.data.sessionLen && !timerState) {
-          // Use backend data if available, otherwise fallback to full session length
-          const initialTimerState = {
-            remainTime: typeof response.data.remainTime === 'number' ? response.data.remainTime : response.data.sessionLen,
-            timerExpired: response.data.timerExpired || false,
-            extraTime: response.data.extraTime || 0
-          };
-          
-          console.log('Initializing timer from backend:', initialTimerState);
-          setTimerState(initialTimerState);
-          
-          // Start countdown timer immediately if session is active
-          if (response.data.status === "active") {
-            // Use a small delay to ensure timer state is set
-            setTimeout(() => {
-              startCountdownTimer(response.data._id, initialTimerState);
-            }, 50);
-          }
-        } else if (response.data.sessionLen && timerState && response.data.status === "active") {
-          // Timer state exists but countdown might not be running - just start countdown
-          console.log('Restarting timer with existing state:', timerState);
-          startCountdownTimer(response.data._id, timerState);
+        // Start timer polling if session has timer and is active
+        if (sessionState.session.sessionLen && sessionState.session.status === "active") {
+          startTimerPolling();
         }
         
         // Start auto-pause timer if session is active
-        if (response.data.status === "active") {
-          startAutoPauseTimer(response.data._id);
+        if (sessionState.session.status === "active") {
+          startAutoPauseTimer(sessionState.session._id);
         }
-        // Save session to localStorage for recovery
-        saveSessionToLocalStorage(response.data);
+        
+        // Save to localStorage for future recovery
+        saveSessionToLocalStorage(sessionState.session);
       } else {
-        // No active session, clear localStorage
-        saveSessionToLocalStorage(null);
+        // No session or local recovery only
+        if (sessionState.shouldSetStarted) {
+          setIsStarted(true);
+        }
+        // Clear localStorage if no valid session
+        if (!sessionState.useLocalRecovery) {
+          saveSessionToLocalStorage(null);
+        }
       }
     } catch (error) {
-      console.error('Failed to fetch current session:', error);
+      console.error('Failed to apply session state:', error);
     } finally {
       setLoading(false);
     }
@@ -551,20 +637,24 @@ const WorkoutTracker: React.FC = () => {
       setCurrentSession(response.data);
       setLastSyncPoint(0); // Reset sync point for new session
       
-      // Initialize separate timer state for new session
+      // Start timer polling for new session
       if (response.data.sessionLen) {
-        setTimerState({
-          remainTime: response.data.sessionLen,
-          timerExpired: false,
-          extraTime: 0
-        });
-        startCountdownTimer(response.data._id);
+        startTimerPolling();
       }
       
       // Start auto-pause timer for new session
       startAutoPauseTimer(response.data._id);
       // Save new session to localStorage
       saveSessionToLocalStorage(response.data);
+
+      // Initialize rep patterns for new training period (Bug-1 fix)
+      try {
+        await repPatternsManager.initialize();
+        updateQuickRepOptions();
+      } catch (error) {
+        console.error('Failed to initialize rep patterns for new session:', error);
+      }
+
       // Check for test data after session creation (to show delete button immediately)
       await checkForTestData();
       // Track goal usage for common goals feature (non-blocking)
@@ -602,13 +692,8 @@ const WorkoutTracker: React.FC = () => {
       const newCompleted = currentSession.completed + reps;
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'updateProgress',
-        completed: newCompleted,
-        // Backup timer state for crash resilience
-        ...(timerState && {
-          remainTime: timerState.remainTime,
-          timerExpired: timerState.timerExpired,
-          extraTime: timerState.extraTime
-        })
+        completed: newCompleted
+        // Timer state is now calculated server-side - no need to send it
       });
       // Clean session state update - no timer conflicts
       setCurrentSession(response.data);
@@ -626,13 +711,8 @@ const WorkoutTracker: React.FC = () => {
         try {
           await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
             action: 'updateProgress',
-            completed: newCompleted,
-            // Backup timer state for crash resilience
-            ...(timerState && {
-              remainTime: timerState.remainTime,
-              timerExpired: timerState.timerExpired,
-              extraTime: timerState.extraTime
-            })
+            completed: newCompleted
+            // Timer state is now calculated server-side - no need to send it
           });
           setNeedsSync(false); // Auto-sync completed, reset sync state
           setLastSyncPoint(Math.floor(newCompleted / 500) * 500); // Update sync point
@@ -659,13 +739,8 @@ const WorkoutTracker: React.FC = () => {
           const finalSyncResponse = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
             action: 'finalSync',
             completed: newCompleted,
-            endTime: now.toISOString(),
-            // Include final timer state if timer was active
-            ...(currentSession.sessionLen && timerState && {
-              remainTime: timerState.remainTime,
-              timerExpired: timerState.timerExpired,
-              extraTime: timerState.extraTime
-            })
+            endTime: now.toISOString()
+            // Timer state is now calculated server-side - no need to send it
           });
           
           // Create daily summary with correct final count
@@ -752,13 +827,8 @@ const WorkoutTracker: React.FC = () => {
     try {
       await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'updateProgress',
-        completed: currentSession.completed,
-        // Backup timer state for crash resilience
-        ...(timerState && {
-          remainTime: timerState.remainTime,
-          timerExpired: timerState.timerExpired,
-          extraTime: timerState.extraTime
-        })
+        completed: currentSession.completed
+        // Timer state is now calculated server-side - no need to send it
       });
       setNeedsSync(false); // Manual sync completed, reset sync state
       console.log('Manual sync completed');
@@ -783,7 +853,15 @@ const WorkoutTracker: React.FC = () => {
           action: 'autoPause'
         });
         // Refresh current session to get updated status
-        await fetchCurrentSession();
+        try {
+          const response = await axios.get(`${API_BASE}/training-sessions`);
+          if (response.data) {
+            setCurrentSession(response.data);
+            saveSessionToLocalStorage(response.data);
+          }
+        } catch (error) {
+          console.error('Failed to refresh session after auto-pause:', error);
+        }
       } catch (error) {
         console.error('Failed to auto-pause session:', error);
       }
@@ -816,19 +894,14 @@ const WorkoutTracker: React.FC = () => {
       }
       
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
-        action: 'pause',
-        // Sync separate timer state to backend when pausing
-        ...(currentSession.sessionLen && timerState && {
-          remainTime: timerState.remainTime,
-          timerExpired: timerState.timerExpired,
-          extraTime: timerState.extraTime
-        })
+        action: 'pause'
+        // Timer state is now calculated server-side - no need to send it
       });
       setCurrentSession(response.data);
       // Update localStorage with paused status
       saveSessionToLocalStorage(response.data);
       clearAutoPauseTimer(); // Stop auto-pause timer when manually paused
-      stopCountdownTimer(); // Stop countdown timer when paused
+      stopTimerPolling(); // Stop timer polling when paused
     } catch (error) {
       console.error('Failed to pause workout:', error);
     }
@@ -846,9 +919,17 @@ const WorkoutTracker: React.FC = () => {
       saveSessionToLocalStorage(response.data);
       // Start auto-pause timer when resuming
       startAutoPauseTimer(response.data._id);
-      // Restart countdown timer if session has timer
+      // Start timer polling if session has timer
       if (response.data.sessionLen) {
-        startCountdownTimer(response.data._id);
+        startTimerPolling();
+      }
+
+      // Initialize rep patterns for resumed training period (Bug-1 fix)
+      try {
+        await repPatternsManager.initialize();
+        updateQuickRepOptions();
+      } catch (error) {
+        console.error('Failed to initialize rep patterns for resumed session:', error);
       }
     } catch (error) {
       console.error('Failed to resume workout:', error);
@@ -876,9 +957,17 @@ const WorkoutTracker: React.FC = () => {
       saveSessionToLocalStorage(response.data);
       // Start auto-pause timer when resuming
       startAutoPauseTimer(response.data._id);
-      // Restart countdown timer if session has timer
+      // Start timer polling if session has timer
       if (response.data.sessionLen) {
-        startCountdownTimer(response.data._id);
+        startTimerPolling();
+      }
+
+      // Initialize rep patterns for resumed training period (Bug-1 fix)
+      try {
+        await repPatternsManager.initialize();
+        updateQuickRepOptions();
+      } catch (error) {
+        console.error('Failed to initialize rep patterns for resumed session:', error);
       }
     } catch (error) {
       console.error('Failed to resume to last activity:', error);
@@ -902,13 +991,8 @@ const WorkoutTracker: React.FC = () => {
       // End the session (for manual end workout button)
       const endResponse = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'end',
-        endTime: now.toISOString(),
-        // Include final timer state if timer was active
-        ...(currentSession.sessionLen && timerState && {
-          remainTime: timerState.remainTime,
-          timerExpired: timerState.timerExpired,
-          extraTime: timerState.extraTime
-        })
+        endTime: now.toISOString()
+        // Timer state is now calculated server-side - no need to send it
       });
       
       // Create daily summary with current progress
@@ -940,7 +1024,7 @@ const WorkoutTracker: React.FC = () => {
       // Clear auto-pause timer when session ends
       clearAutoPauseTimer();
       // Clear countdown timer when session ends
-      stopCountdownTimer();
+      stopTimerPolling();
       
       // Refresh test data status after session ends
       await checkForTestData();
@@ -1293,13 +1377,13 @@ const WorkoutTracker: React.FC = () => {
           </div>
           
           {/* Right side: Circular Timer */}
-          {currentSession.sessionLen && timerState && (
+          {currentSession.sessionLen && (
             <div className="timer-section">
               <CircularTimer
-                remainTime={timerState.remainTime}
+                remainTime={currentSession.remainTime || currentSession.sessionLen}
                 totalTime={currentSession.sessionLen}
-                isExpired={timerState.timerExpired}
-                extraTime={timerState.extraTime}
+                isExpired={currentSession.timerExpired || false}
+                extraTime={currentSession.extraTime || 0}
                 isPaused={currentSession.status === 'paused'}
                 onClick={handleTimerClick}
               />

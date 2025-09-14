@@ -9,13 +9,87 @@ const getCurrentTime = () => {
 // Helper function to calculate actual workout duration from training segments
 const calculateActualWorkoutDuration = (segments) => {
   if (!segments || segments.length === 0) return 0;
-  
+
   return segments.reduce((total, segment) => {
     if (segment.start && segment.end) {
       return total + (new Date(segment.end) - new Date(segment.start));
     }
     return total;
   }, 0);
+};
+
+// Helper function to calculate real-time timer status (bulletproof server-time approach)
+const calculateTimerStatus = (session) => {
+  // If session has no timer, return null
+  if (!session.sessionLen || !session.startTime) {
+    return null;
+  }
+
+  const now = getCurrentTime();
+  const startTime = new Date(session.startTime);
+
+  // Calculate total elapsed seconds since session started
+  let totalElapsedSeconds = Math.floor((now - startTime) / 1000);
+
+  // Subtract paused time from elapsed time
+  if (session.trainingSegments && session.trainingSegments.length > 0) {
+    let pausedTimeSeconds = 0;
+
+    session.trainingSegments.forEach(segment => {
+      if (segment.start && segment.end) {
+        // Completed segment - add gap time as paused time
+        const segmentStart = new Date(segment.start);
+        const segmentEnd = new Date(segment.end);
+
+        // Find next segment or current time
+        const nextSegmentIndex = session.trainingSegments.indexOf(segment) + 1;
+        if (nextSegmentIndex < session.trainingSegments.length) {
+          const nextSegment = session.trainingSegments[nextSegmentIndex];
+          if (nextSegment.start) {
+            const nextStart = new Date(nextSegment.start);
+            pausedTimeSeconds += Math.floor((nextStart - segmentEnd) / 1000);
+          }
+        } else {
+          // Last completed segment - if session is paused, add pause time
+          if (session.status === 'paused' && session.pausedAt) {
+            const pausedAt = new Date(session.pausedAt);
+            pausedTimeSeconds += Math.floor((now - pausedAt) / 1000);
+          }
+        }
+      }
+    });
+
+    totalElapsedSeconds -= pausedTimeSeconds;
+  }
+
+  // For paused sessions, don't count current pause time
+  if (session.status === 'paused' && session.pausedAt) {
+    const pausedAt = new Date(session.pausedAt);
+    const currentPauseTime = Math.floor((now - pausedAt) / 1000);
+    totalElapsedSeconds -= currentPauseTime;
+  }
+
+  // Apply timer compensation if any (for "resume to last activity" feature)
+  const compensation = session.timerCompensation || 0;
+
+  // Calculate remaining time
+  const remainingSeconds = session.sessionLen - totalElapsedSeconds + compensation;
+
+  if (remainingSeconds > 0) {
+    // Timer still running
+    return {
+      remainTime: remainingSeconds,
+      timerExpired: false,
+      extraTime: 0
+    };
+  } else {
+    // Timer expired - calculate overtime
+    return {
+      remainTime: 0,
+      timerExpired: true,
+      extraTime: Math.abs(remainingSeconds)
+    };
+  }
 };
 
 exports.handler = async (event, context) => {
@@ -42,18 +116,38 @@ exports.handler = async (event, context) => {
         }
         
         // Get current non-ended session (active or paused)
-        const currentSession = await collection.findOne({ 
-          status: { $ne: "ended" } 
+        const currentSession = await collection.findOne({
+          status: { $ne: "ended" }
         });
-        
-        return {
-          statusCode: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          },
-          body: JSON.stringify(currentSession)
-        };
+
+        if (currentSession) {
+          // Calculate real-time timer status
+          const timerStatus = calculateTimerStatus(currentSession);
+
+          // Add calculated timer fields to session
+          const sessionWithTimer = {
+            ...currentSession,
+            ...(timerStatus && timerStatus)
+          };
+
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(sessionWithTimer)
+          };
+        } else {
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(null)
+          };
+        }
         
       case 'POST':
         // Create new training session
@@ -88,11 +182,8 @@ exports.handler = async (event, context) => {
             start: now,
             end: null
           }],
-          // Timer fields
+          // Timer fields (only sessionLen is stored - rest calculated dynamically)
           sessionLen: sessionData.sessionLen || null,  // Target duration in seconds
-          remainTime: sessionData.sessionLen || null,  // Remaining time in seconds (starts same as sessionLen)
-          timerExpired: false,                         // Default false
-          extraTime: 0,                               // Overtime in seconds, default 0
           testing: sessionData.testing || false,
           createdAt: sessionData.createdAt ? new Date(sessionData.createdAt) : getCurrentTime()
         };
@@ -148,35 +239,12 @@ exports.handler = async (event, context) => {
         if (updateData.action === 'updateProgress') {
           updateFields.completed = updateData.completed;
           updateFields.lastActivityAt = getCurrentTime();
-          // Update timer state if provided
-          if (updateData.remainTime !== undefined) {
-            updateFields.remainTime = updateData.remainTime;
-          }
-        } else if (updateData.action === 'updateTimer') {
-          // Timer-specific update (remaining time, expired state, extra time)
-          if (updateData.remainTime !== undefined) {
-            updateFields.remainTime = updateData.remainTime;
-          }
-          if (updateData.timerExpired !== undefined) {
-            updateFields.timerExpired = updateData.timerExpired;
-          }
-          if (updateData.extraTime !== undefined) {
-            updateFields.extraTime = updateData.extraTime;
-          }
+          // Timer state is now calculated dynamically - no need to store it
         } else if (updateData.action === 'pause') {
           const now = updateData.pausedAt ? new Date(updateData.pausedAt) : getCurrentTime();
           updateFields.status = "paused";
           updateFields.pausedAt = now;
-          // Save timer state when pausing
-          if (updateData.remainTime !== undefined) {
-            updateFields.remainTime = updateData.remainTime;
-          }
-          if (updateData.timerExpired !== undefined) {
-            updateFields.timerExpired = updateData.timerExpired;
-          }
-          if (updateData.extraTime !== undefined) {
-            updateFields.extraTime = updateData.extraTime;
-          }
+          // Timer state is now calculated dynamically - no need to store it
           // End current training segment
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
@@ -190,6 +258,13 @@ exports.handler = async (event, context) => {
           updateFields.status = "active";
           updateFields.pausedAt = null;
           updateFields.lastActivityAt = now;
+          
+          // Handle time compensation for "resume to last activity" feature
+          if (updateData.compensateTime && typeof updateData.compensateTime === 'number') {
+            // Store compensation time to be used by timer calculation
+            updateFields.timerCompensation = (updateFields.timerCompensation || 0) + updateData.compensateTime;
+          }
+          
           // Start new training segment
           updateFields.$push = { trainingSegments: { start: now, end: null } };
         } else if (updateData.action === 'autoPause') {
@@ -211,16 +286,7 @@ exports.handler = async (event, context) => {
           updateFields.status = "ended";
           updateFields.endTime = now;
           updateFields.pausedAt = null;
-          // Save final timer state
-          if (updateData.remainTime !== undefined) {
-            updateFields.remainTime = updateData.remainTime;
-          }
-          if (updateData.timerExpired !== undefined) {
-            updateFields.timerExpired = updateData.timerExpired;
-          }
-          if (updateData.extraTime !== undefined) {
-            updateFields.extraTime = updateData.extraTime;
-          }
+          // Timer state is calculated dynamically - no need to store it
           // End current training segment and calculate actual workout duration
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
@@ -240,16 +306,7 @@ exports.handler = async (event, context) => {
           updateFields.status = "ended";
           updateFields.endTime = now;
           updateFields.pausedAt = null;
-          // Save final timer state
-          if (updateData.remainTime !== undefined) {
-            updateFields.remainTime = updateData.remainTime;
-          }
-          if (updateData.timerExpired !== undefined) {
-            updateFields.timerExpired = updateData.timerExpired;
-          }
-          if (updateData.extraTime !== undefined) {
-            updateFields.extraTime = updateData.extraTime;
-          }
+          // Timer state is calculated dynamically - no need to store it
           // End current training segment and calculate actual workout duration
           const session = await collection.findOne({ _id: objectId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
