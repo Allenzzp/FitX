@@ -34,6 +34,30 @@ const calculateTimerStatus = (session) => {
     };
   }
 
+  // For resume to last activity, use timer override if recently set
+  if (session.resumeTimerOverride && session.status === 'active') {
+    const now = getCurrentTime();
+    const overrideSetAt = new Date(session.resumeTimerOverride.setAt);
+    const secondsSinceOverride = Math.floor((now - overrideSetAt) / 1000);
+
+    // Calculate current timer state based on override + elapsed time since override
+    const currentRemainTime = session.resumeTimerOverride.remainTime - secondsSinceOverride;
+
+    if (currentRemainTime > 0) {
+      return {
+        remainTime: currentRemainTime,
+        timerExpired: false,
+        extraTime: 0
+      };
+    } else {
+      return {
+        remainTime: 0,
+        timerExpired: true,
+        extraTime: Math.abs(currentRemainTime)
+      };
+    }
+  }
+
   const now = getCurrentTime();
   const startTime = new Date(session.startTime);
 
@@ -244,6 +268,7 @@ exports.handler = async (event, context) => {
         
         let updateFields = {};
         
+
         // Handle different update types
         if (updateData.action === 'updateProgress') {
           updateFields.completed = updateData.completed;
@@ -282,6 +307,29 @@ exports.handler = async (event, context) => {
           if (updateData.compensateTime && typeof updateData.compensateTime === 'number') {
             // Store compensation time to be used by timer calculation
             updateFields.timerCompensation = (updateFields.timerCompensation || 0) + updateData.compensateTime;
+
+            // Log client last rep timestamp for debugging
+            if (updateData.clientLastRepAt) {
+              console.log(`Resume to last activity: client last rep at ${updateData.clientLastRepAt}, compensating ${updateData.compensateTime} seconds`);
+            }
+          }
+
+          // Start new training segment
+          updateFields.$push = { trainingSegments: { start: now, end: null } };
+        } else if (updateData.action === 'resumeToLastActivity') {
+          const now = getCurrentTime();
+          updateFields.status = "active";
+          updateFields.pausedAt = null;
+          updateFields.lastActivityAt = now;
+
+          // Store the exact timer state from last rep time (direct override)
+          if (updateData.lastRepTimerState) {
+            updateFields.resumeTimerOverride = {
+              remainTime: updateData.lastRepTimerState.remainTime,
+              isExpired: updateData.lastRepTimerState.isExpired,
+              extraTime: updateData.lastRepTimerState.extraTime,
+              setAt: now
+            };
           }
 
           // Start new training segment
@@ -412,13 +460,22 @@ exports.handler = async (event, context) => {
           };
         }
 
+        // Calculate real-time timer status for the updated session (same as GET)
+        const timerStatus = calculateTimerStatus(updatedSession);
+
+        // Add calculated timer fields to session
+        const sessionWithTimer = {
+          ...updatedSession,
+          ...(timerStatus && timerStatus)
+        };
+
         return {
           statusCode: 200,
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           },
-          body: JSON.stringify(updatedSession)
+          body: JSON.stringify(sessionWithTimer)
         };
         
       case 'DELETE':

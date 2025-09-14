@@ -79,6 +79,7 @@ const WorkoutTracker: React.FC = () => {
   } | null>(null);
   const [clientTimerInterval, setClientTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const [syncInterval, setSyncInterval] = useState<NodeJS.Timeout | null>(null);
+  const [clientLastRepAt, setClientLastRepAt] = useState<Date | null>(null);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -312,7 +313,7 @@ const WorkoutTracker: React.FC = () => {
         return { hasLocalSession: false, shouldRecover: false };
       }
 
-      const { sessionId, timestamp, status, hasTimer, testing } = JSON.parse(sessionData);
+      const { sessionId, timestamp, status, hasTimer, testing, clientLastRepAt } = JSON.parse(sessionData);
       const now = Date.now();
       const timeDiff = now - timestamp;
       const tenMinutes = 10 * 60 * 1000;
@@ -327,6 +328,7 @@ const WorkoutTracker: React.FC = () => {
         status,
         hasTimer,
         testing: testing || false, // Include testing mode from localStorage
+        clientLastRepAt: clientLastRepAt || null, // Include last rep timestamp
         timeDiff
       };
     } catch (error) {
@@ -344,7 +346,8 @@ const WorkoutTracker: React.FC = () => {
         timestamp: Date.now(),
         status: session.status,
         hasTimer: !!session.sessionLen, // Track whether session has a timer
-        testing: session.testing || false // Store testing mode for recovery validation
+        testing: session.testing || false, // Store testing mode for recovery validation
+        clientLastRepAt: clientLastRepAt?.toISOString() || null // Persist last rep timestamp
       }));
     } else {
       localStorage.removeItem('activeSession');
@@ -566,6 +569,7 @@ const WorkoutTracker: React.FC = () => {
         session: backendSession,
         useLocalRecovery: false,
         localTestingMode: localRecovery.testing, // Pass localStorage testing mode as fallback
+        localClientLastRepAt: localRecovery.clientLastRepAt, // Pass localStorage last rep timestamp
         error: null
       };
     }
@@ -625,6 +629,13 @@ const WorkoutTracker: React.FC = () => {
 
         // Set sync point based on current progress
         setLastSyncPoint(Math.floor(sessionState.session.completed / 500) * 500);
+
+        // Initialize client last rep timestamp - prefer localStorage, fallback to session's lastActivityAt
+        if (sessionState.localClientLastRepAt) {
+          setClientLastRepAt(new Date(sessionState.localClientLastRepAt));
+        } else {
+          setClientLastRepAt(new Date(sessionState.session.lastActivityAt));
+        }
 
         // Initialize client-side timer based on session state
         if (sessionState.session.sessionLen) {
@@ -724,6 +735,9 @@ const WorkoutTracker: React.FC = () => {
       setCurrentSession(response.data);
       setLastSyncPoint(0); // Reset sync point for new session
 
+      // Initialize client last rep timestamp for new session
+      setClientLastRepAt(new Date());
+
       // Start client-side timer for new session
       if (response.data.sessionLen) {
         startClientTimer(response.data.sessionLen, response.data.sessionLen);
@@ -776,7 +790,11 @@ const WorkoutTracker: React.FC = () => {
       // Track rep usage for pattern learning
       repPatternsManager.trackRepUsage(reps);
       updateQuickRepOptions();
-      
+
+      // Track client-side last rep activity timestamp
+      const repTimestamp = new Date();
+      setClientLastRepAt(repTimestamp);
+
       const newCompleted = currentSession.completed + reps;
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
         action: 'updateProgress',
@@ -1056,20 +1074,28 @@ const WorkoutTracker: React.FC = () => {
   };
 
   const resumeToLastActivity = async () => {
-    if (!currentSession) return;
-    
+    if (!currentSession || !currentSession.sessionLen) return;
+
     try {
-      // Calculate time to add back based on last activity
-      const lastSegment = currentSession.trainingSegments[currentSession.trainingSegments.length - 1];
-      const pausedAt = new Date(lastSegment.end!);
-      const lastActivityAt = new Date(currentSession.lastActivityAt);
-      const inactiveTimeSeconds = Math.floor((pausedAt.getTime() - lastActivityAt.getTime()) / 1000);
-      
-      // Resume with time compensation
+      // Use client-side last rep timestamp if available, otherwise fall back to DB lastActivityAt
+      const actualLastRepAt = clientLastRepAt || new Date(currentSession.lastActivityAt);
+
+      // Calculate what the timer state was at the last rep time
+      const sessionStartTime = new Date(currentSession.startTime);
+      const elapsedAtLastRep = Math.floor((actualLastRepAt.getTime() - sessionStartTime.getTime()) / 1000);
+      const remainTimeAtLastRep = Math.max(0, currentSession.sessionLen - elapsedAtLastRep);
+
+      const lastRepTimerState = {
+        remainTime: remainTimeAtLastRep,
+        isExpired: remainTimeAtLastRep <= 0,
+        extraTime: remainTimeAtLastRep <= 0 ? Math.abs(remainTimeAtLastRep) : 0
+      };
+
+
+      // Send the exact timer state to restore
       const response = await axios.put(`${API_BASE}/training-sessions?id=${currentSession._id}`, {
-        action: 'resume',
-        // Add inactive time back to remaining time
-        compensateTime: inactiveTimeSeconds
+        action: 'resumeToLastActivity',
+        lastRepTimerState: lastRepTimerState
       });
       setCurrentSession(response.data);
       // Update localStorage with resumed status
