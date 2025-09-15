@@ -343,7 +343,12 @@ const StrengthTracker: React.FC = () => {
                   );
                 })}
               </div>
-            ) : isPastBeyondEditWindow() && (
+            ) : (() => {
+              const today = new Date();
+              const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+              const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+              return selectedDateOnly.getTime() <= todayOnly.getTime();
+            })() && (
               <div className="rest-display">
                 <div className="rest-text">REST</div>
               </div>
