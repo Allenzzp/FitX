@@ -281,8 +281,13 @@ exports.handler = async (event, context) => {
 
           // Store client timer state for accurate resume
           if (updateData.clientTimerState) {
+            // Use client's displayed time as authoritative source (what user saw when they clicked pause)
+            const authoritativeRemainTime = updateData.clientDisplayedTime !== undefined
+              ? updateData.clientDisplayedTime
+              : updateData.clientTimerState.remainTime;
+
             updateFields.pausedTimerState = {
-              remainTime: updateData.clientTimerState.remainTime,
+              remainTime: authoritativeRemainTime, // ← User's ground truth
               isExpired: updateData.clientTimerState.isExpired,
               extraTime: updateData.clientTimerState.extraTime,
               pausedAt: now

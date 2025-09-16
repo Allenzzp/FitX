@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { getUserLocalDate, createDailySummaryDate } from '../utils/dateUtils';
 import './WorkoutCalendar.css';
 
 interface WorkoutSet {
@@ -50,8 +51,9 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
 
   // Format date for local date mapping (creates consistent key for local dates)
   const formatDateForAPI = (date: Date): string => {
-    // Create a local date key without timezone conversion
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+    // Create a local date key using timezone-safe utilities
+    const localDateString = getUserLocalDate(date);
+    return createDailySummaryDate(localDateString);
   };
 
   // Get calendar days for current month (Monday start)

@@ -5,6 +5,7 @@ import WeeklyChart from './WeeklyChart';
 import TimerPicker from './TimerPicker';
 import CircularTimer from './CircularTimer';
 import { RepPatternsManager } from '../utils/repPatternsManager';
+import { getUserLocalDate, createDailySummaryDate } from '../utils/dateUtils';
 import './WorkoutTracker.css';
 
 interface TrainingSession {
@@ -849,22 +850,21 @@ const WorkoutTracker: React.FC = () => {
           });
           
           // Create daily summary with correct final count
-          const today = new Date();
-          const localDate = today.toLocaleDateString("en-CA");
-          // Create timezone-aware date that preserves the local date
-          const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+          const localDate = getUserLocalDate();
+          const dailySummaryDate = createDailySummaryDate(localDate);
           // Calculate workout minutes from the updated session
           const updatedSession = finalSyncResponse.data;
           const workoutMinutes = calculateWorkoutMinutes(updatedSession);
           
           await axios.post(`${API_BASE}/daily-summaries`, {
-            date: localMidnight,
+            date: dailySummaryDate,
+            localDate: localDate,
             totalJumps: newCompleted,
             sessionsCount: 1,
             totalWorkoutMinutes: workoutMinutes,
             testing: isTestingMode,
-            createdAt: today.toISOString(),
-            updatedAt: today.toISOString()
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
           });
           
           // Update UI state for completion
@@ -1007,6 +1007,11 @@ const WorkoutTracker: React.FC = () => {
     if (!currentSession) return;
 
     try {
+      // 1. IMMEDIATELY freeze what user sees (prevent timer drift during request)
+      pauseClientTimer(); // Stop client timer first - user sees immediate pause
+      clearAutoPauseTimer(); // Stop auto-pause timer when manually paused
+      stopTimerSync(); // Stop timer sync when paused
+
       // Sync rep patterns before pausing
       try {
         await repPatternsManager.syncToDatabase();
@@ -1015,13 +1020,14 @@ const WorkoutTracker: React.FC = () => {
         console.error('Failed to sync rep patterns on pause:', error);
       }
 
-      // Send current client timer state to backend for accurate pause
+      // Send client's displayed time as authoritative source
       const pauseData: any = {
         action: 'pause'
       };
 
-      // Include client timer state if available
+      // Include client's displayed time - this is what user saw when they clicked pause
       if (clientTimer) {
+        pauseData.clientDisplayedTime = clientTimer.remainTime; // ← User's ground truth
         pauseData.clientTimerState = {
           remainTime: clientTimer.remainTime,
           isExpired: clientTimer.isExpired,
@@ -1033,9 +1039,6 @@ const WorkoutTracker: React.FC = () => {
       setCurrentSession(response.data);
       // Update localStorage with paused status
       saveSessionToLocalStorage(response.data);
-      clearAutoPauseTimer(); // Stop auto-pause timer when manually paused
-      pauseClientTimer(); // Pause client timer (preserve state, stop countdown)
-      stopTimerSync(); // Stop timer sync when paused
     } catch (error) {
       console.error('Failed to pause workout:', error);
     }
@@ -1142,22 +1145,21 @@ const WorkoutTracker: React.FC = () => {
       });
       
       // Create daily summary with current progress
-      const today = new Date();
-      const localDate = today.toLocaleDateString("en-CA");
-      // Create timezone-aware date that preserves the local date
-      const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+      const localDate = getUserLocalDate();
+      const dailySummaryDate = createDailySummaryDate(localDate);
       // Calculate workout minutes from the updated session
       const updatedSession = endResponse.data;
       const workoutMinutes = calculateWorkoutMinutes(updatedSession);
       
       await axios.post(`${API_BASE}/daily-summaries`, {
-        date: localMidnight,
+        date: dailySummaryDate,
+        localDate: localDate,
         totalJumps: currentSession.completed,
         sessionsCount: 1,
         totalWorkoutMinutes: workoutMinutes,
         testing: isTestingMode,
-        createdAt: today.toISOString(),
-        updatedAt: today.toISOString()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
       
       // Save completed session and switch to completed state

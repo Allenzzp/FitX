@@ -296,7 +296,8 @@ exports.handler = async (event, context) => {
                 totalWorkoutMinutes: summaryData.totalWorkoutMinutes || 0  // New field increment
               },
               $set: {
-                updatedAt: summaryData.updatedAt ? new Date(summaryData.updatedAt) : getCurrentTime()
+                updatedAt: summaryData.updatedAt ? new Date(summaryData.updatedAt) : getCurrentTime(),
+                localDate: summaryData.localDate || null  // Add localDate for timezone-safe filtering
               }
             }
           );
@@ -314,6 +315,7 @@ exports.handler = async (event, context) => {
           // Create new summary
           const newSummary = {
             date: targetDate,
+            localDate: summaryData.localDate || null,  // Add localDate for timezone-safe filtering
             totalJumps: summaryData.totalJumps || 0,
             sessionsCount: summaryData.sessionsCount || 0,
             totalWorkoutMinutes: summaryData.totalWorkoutMinutes || 0,  // New field for workout time tracking

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { getUserLocalDate, extractLocalDateFromTimestamp } from '../utils/dateUtils';
 import './WeeklyChart.css';
 
 interface DailySummary {
   _id: string;
   date: string;
+  localDate?: string; // Added for timezone-safe filtering
   totalJumps: number;
   sessionsCount: number;
   testing?: boolean;
@@ -309,12 +311,16 @@ const WeeklyChart: React.FC = () => {
 
   // Get max jumps for scaling (consider both real and testing data)
   const actualMaxJumps = Math.max(...weekDays.map(day => {
-    const realData = currentWeekData.find(d => 
-      new Date(d.date).toDateString() === day.toDateString() && !d.testing
-    );
-    const testingData = currentWeekData.find(d => 
-      new Date(d.date).toDateString() === day.toDateString() && d.testing
-    );
+    const dayLocalDate = getUserLocalDate(day);
+    const realData = currentWeekData.find(d => {
+      // Use localDate if available (new format), otherwise extract from timestamp (backward compatibility)
+      const dataLocalDate = d.localDate || extractLocalDateFromTimestamp(d.date);
+      return dataLocalDate === dayLocalDate && !d.testing;
+    });
+    const testingData = currentWeekData.find(d => {
+      const dataLocalDate = d.localDate || extractLocalDateFromTimestamp(d.date);
+      return dataLocalDate === dayLocalDate && d.testing;
+    });
     const realJumps = realData ? realData.totalJumps : 0;
     const testingJumps = testingData ? testingData.totalJumps : 0;
     return realJumps + testingJumps;
@@ -378,12 +384,15 @@ const WeeklyChart: React.FC = () => {
           <div className="bars-container">
             {weekDays.map((day, index) => {
               // Separate real and testing data for this day
-              const realData = currentWeekData.find(d => 
-                new Date(d.date).toDateString() === day.toDateString() && !d.testing
-              );
-              const testingData = currentWeekData.find(d => 
-                new Date(d.date).toDateString() === day.toDateString() && d.testing
-              );
+              const dayLocalDate = getUserLocalDate(day);
+              const realData = currentWeekData.find(d => {
+                const dataLocalDate = d.localDate || extractLocalDateFromTimestamp(d.date);
+                return dataLocalDate === dayLocalDate && !d.testing;
+              });
+              const testingData = currentWeekData.find(d => {
+                const dataLocalDate = d.localDate || extractLocalDateFromTimestamp(d.date);
+                return dataLocalDate === dayLocalDate && d.testing;
+              });
               
               const realJumps = realData ? realData.totalJumps : 0;
               const testingJumps = testingData ? testingData.totalJumps : 0;
