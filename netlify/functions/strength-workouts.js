@@ -15,11 +15,16 @@ const parseDate = (dateString) => {
   return date;
 };
 
-// Helper function to create daily date (midnight UTC - matching main branch)
-const createDailyDate = (inputDate) => {
-  const date = new Date(inputDate);
-  // Create UTC date to match main branch behavior and existing records
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())).toISOString();
+// Helper function to create daily date identifier from UTC timestamp
+// Extracts local date from UTC timestamp for workout grouping
+const createDailyDate = (utcTimestamp) => {
+  const date = new Date(utcTimestamp);
+  // Extract local date components (automatically handles timezone conversion)
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  // Create UTC midnight for the local date (for consistent storage format)
+  return new Date(Date.UTC(year, month, day)).toISOString();
 };
 
 exports.handler = async (event, context) => {
@@ -76,9 +81,20 @@ exports.handler = async (event, context) => {
         // Get workouts for a specific date
         const dateParam = queryStringParameters?.date;
         if (dateParam) {
-          const targetDate = createDailyDate(dateParam);
-          const workouts = await collection.findOne({ 
-            date: targetDate 
+          const queryDate = new Date(dateParam);
+          const localYear = queryDate.getFullYear();
+          const localMonth = queryDate.getMonth();
+          const localDay = queryDate.getDate();
+
+          // Create start and end of day boundaries in local timezone
+          const dayStart = new Date(localYear, localMonth, localDay, 0, 0, 0, 0);
+          const dayEnd = new Date(localYear, localMonth, localDay, 23, 59, 59, 999);
+
+          const workouts = await collection.findOne({
+            date: {
+              $gte: dayStart.toISOString(),
+              $lte: dayEnd.toISOString()
+            }
           });
           
           return {
@@ -108,10 +124,25 @@ exports.handler = async (event, context) => {
         
       case 'POST':
         const workoutData = JSON.parse(body);
-        const workoutDate = createDailyDate(workoutData.date || new Date());
-        
-        // Find existing workout for this date
-        let existingWorkout = await collection.findOne({ date: workoutDate });
+        const recordingTimestamp = workoutData.date || getCurrentTime().toISOString();
+        const dailyDateKey = createDailyDate(recordingTimestamp);
+
+        // Find existing workout for this local date using timestamp range
+        const recordingDate = new Date(recordingTimestamp);
+        const localYear = recordingDate.getFullYear();
+        const localMonth = recordingDate.getMonth();
+        const localDay = recordingDate.getDate();
+
+        // Create start and end of day boundaries in local timezone
+        const dayStart = new Date(localYear, localMonth, localDay, 0, 0, 0, 0);
+        const dayEnd = new Date(localYear, localMonth, localDay, 23, 59, 59, 999);
+
+        let existingWorkout = await collection.findOne({
+          date: {
+            $gte: dayStart.toISOString(),
+            $lte: dayEnd.toISOString()
+          }
+        });
         
         if (existingWorkout) {
           // Add new set to existing workout
@@ -123,7 +154,7 @@ exports.handler = async (event, context) => {
             // Exercise already exists, add new set
             existingWorkout.exercises[exerciseIndex].sets.push({
               reps: workoutData.reps,
-              timestamp: getCurrentTime().toISOString()
+              timestamp: recordingTimestamp
             });
           } else {
             // New exercise for this date
@@ -131,12 +162,12 @@ exports.handler = async (event, context) => {
               exercise: workoutData.exercise,
               sets: [{
                 reps: workoutData.reps,
-                timestamp: getCurrentTime().toISOString()
+                timestamp: recordingTimestamp
               }]
             });
           }
           
-          existingWorkout.updatedAt = getCurrentTime().toISOString();
+          existingWorkout.updatedAt = recordingTimestamp;
           
           // Update the document
           await collection.updateOne(
@@ -155,17 +186,17 @@ exports.handler = async (event, context) => {
         } else {
           // Create new workout document for this date
           const newWorkout = {
-            date: workoutDate,
+            date: recordingTimestamp,
             exercises: [{
               exercise: workoutData.exercise,
               sets: [{
                 reps: workoutData.reps,
-                timestamp: getCurrentTime().toISOString()
+                timestamp: recordingTimestamp
               }]
             }],
             testing: workoutData.testing || false,
-            createdAt: getCurrentTime().toISOString(),
-            updatedAt: getCurrentTime().toISOString()
+            createdAt: recordingTimestamp,
+            updatedAt: recordingTimestamp
           };
           
           const result = await collection.insertOne(newWorkout);

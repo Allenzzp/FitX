@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { getExerciseOptions, getExerciseClass, ExerciseClassName } from '../utils/exerciseClasses';
+import { getUserLocalDate } from '../utils/dateUtils';
 import WorkoutCalendar from './WorkoutCalendar';
 import './StrengthTracker.css';
 
@@ -24,10 +25,14 @@ interface StrengthWorkout {
   updatedAt?: string;
 }
 
-const StrengthTracker: React.FC = () => {
+interface StrengthTrackerProps {
+  onWorkoutUpdate?: (date: Date, updatedWorkout: StrengthWorkout | null) => void;
+}
+
+const StrengthTracker: React.FC<StrengthTrackerProps> = ({ onWorkoutUpdate }) => {
   const navigate = useNavigate();
-  const [todaysWorkout, setTodaysWorkout] = useState<StrengthWorkout | null>(null);
   const [isTestingMode, setIsTestingMode] = useState(false);
+  const [calendarUpdateCallback, setCalendarUpdateCallback] = useState<((date: Date, updatedWorkout: StrengthWorkout | null) => void) | null>(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
@@ -83,24 +88,20 @@ const StrengthTracker: React.FC = () => {
   const handleDateSelect = (date: Date, workoutData?: StrengthWorkout | null) => {
     setSelectedDate(date);
     setExpandedExercises(new Set()); // Reset expanded state
-    
+
     // Use pre-loaded workout data from calendar to avoid additional API calls
     setSelectedDateWorkout(workoutData || null);
-    
-    // If selected date is today, also update todaysWorkout
-    const today = new Date();
-    if (date.toDateString() === today.toDateString()) {
-      setTodaysWorkout(workoutData || null);
-    }
   };
 
   // Get the workout to display (selected date or today)
   const getDisplayWorkout = (): StrengthWorkout | null => {
-    const today = new Date();
-    if (selectedDate.toDateString() === today.toDateString()) {
-      return todaysWorkout;
-    }
     return selectedDateWorkout;
+  };
+
+  // Helper function to update both local state and notify calendar
+  const updateWorkoutData = (updatedWorkout: StrengthWorkout | null) => {
+    setSelectedDateWorkout(updatedWorkout);
+    calendarUpdateCallback?.(selectedDate, updatedWorkout);
   };
 
   // Check if selected date is in the 3-day edit window (today + 2 days back)
@@ -176,13 +177,8 @@ const StrengthTracker: React.FC = () => {
       // Send PUT request to update the workout
       const response = await axios.put(`${API_BASE}/strength-workouts?id=${workout._id}`, updatedWorkout);
       
-      // Update local state
-      const today = new Date();
-      if (selectedDate.toDateString() === today.toDateString()) {
-        setTodaysWorkout(response.data);
-      } else {
-        setSelectedDateWorkout(response.data);
-      }
+      // Update local state and notify calendar
+      updateWorkoutData(response.data);
     } catch (error) {
       console.error('Failed to update set:', error);
       alert('Failed to update set. Please try again.');
@@ -215,13 +211,8 @@ const StrengthTracker: React.FC = () => {
       // Send PUT request to update the workout
       const response = await axios.put(`${API_BASE}/strength-workouts?id=${workout._id}`, updatedWorkout);
       
-      // Update local state
-      const today = new Date();
-      if (selectedDate.toDateString() === today.toDateString()) {
-        setTodaysWorkout(response.data);
-      } else {
-        setSelectedDateWorkout(response.data);
-      }
+      // Update local state and notify calendar
+      updateWorkoutData(response.data);
     } catch (error) {
       console.error('Failed to delete set:', error);
       alert('Failed to delete set. Please try again.');
@@ -292,9 +283,12 @@ const StrengthTracker: React.FC = () => {
           {/* Left Column - workout sentences */}
           <div className="left-column">
             {/* Display selected date exercises or REST */}
-            {getDisplayWorkout()?.exercises && getDisplayWorkout()!.exercises.length > 0 ? (
-              <div className="exercise-sentences">
-                {getDisplayWorkout()!.exercises.map((exercise, index) => {
+            {(() => {
+              const displayWorkout = getDisplayWorkout();
+              const exercises = displayWorkout?.exercises;
+              return exercises && exercises.length > 0 ? (
+                <div className="exercise-sentences">
+                  {exercises.map((exercise, index) => {
                   const isExpanded = expandedExercises.has(exercise.exercise);
                   return (
                     <div key={`${exercise.exercise}-${index}`} className="exercise-sentence">
@@ -341,18 +335,19 @@ const StrengthTracker: React.FC = () => {
                       )}
                     </div>
                   );
-                })}
-              </div>
-            ) : (() => {
-              const today = new Date();
-              const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-              const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-              return selectedDateOnly.getTime() <= todayOnly.getTime();
-            })() && (
-              <div className="rest-display">
-                <div className="rest-text">REST</div>
-              </div>
-            )}
+                  })}
+                </div>
+              ) : (() => {
+                const today = new Date();
+                const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                return selectedDateOnly.getTime() < todayOnly.getTime();
+              })() && (
+                <div className="rest-display">
+                  <div className="rest-text">REST</div>
+                </div>
+              );
+            })()}
             
           </div>
 
@@ -369,38 +364,54 @@ const StrengthTracker: React.FC = () => {
 
       {/* Bottom half - Calendar area */}
       <div className="calendar-area">
-        <WorkoutCalendar 
+        <WorkoutCalendar
           selectedDate={selectedDate}
           onDateSelect={handleDateSelect}
           isTestingMode={isTestingMode}
+          onWorkoutUpdate={(callback) => setCalendarUpdateCallback(() => callback)}
         />
       </div>
 
       {/* Record Workout Modal */}
       {showRecordModal && (
-        <RecordWorkoutModal 
+        <RecordWorkoutModal
           exerciseOptions={exerciseOptions}
           isTestingMode={isTestingMode}
+          selectedDate={selectedDate}
           onClose={() => setShowRecordModal(false)}
           onRecord={async (exerciseName: ExerciseClassName, value: number) => {
             try {
               const ExerciseClass = getExerciseClass(exerciseName);
               const exerciseInstance = new ExerciseClass(value);
-              
+
+              // Generate timestamp based on selected date
+              const getRecordingTimestamp = (selectedDate: Date): string => {
+                const today = new Date();
+                if (selectedDate.toDateString() === today.toDateString()) {
+                  // Today: use current time
+                  return new Date().toISOString();
+                } else {
+                  // Past date: use 2 PM local time of selected date
+                  const recordTime = new Date(
+                    selectedDate.getFullYear(),
+                    selectedDate.getMonth(),
+                    selectedDate.getDate(),
+                    14, 0, 0, 0 // 2 PM local time
+                  );
+                  return recordTime.toISOString();
+                }
+              };
+
               const response = await axios.post(`${API_BASE}/strength-workouts`, {
                 exercise: ExerciseClass.exerciseName,
                 reps: exerciseInstance.reps,
                 testing: isTestingMode,
-                date: new Date().toISOString()
+                date: getRecordingTimestamp(selectedDate)
               });
               
-              // Update both today's workout and selected date workout if they're the same
-              const today = new Date();
-              if (selectedDate.toDateString() === today.toDateString()) {
-                setTodaysWorkout(response.data);
-                setSelectedDateWorkout(response.data);
-              }
-              setShowRecordModal(false);
+              // Update the selected date workout and notify calendar
+              updateWorkoutData(response.data);
+              // Modal will auto-close from handleRecord function
             } catch (error) {
               console.error('Failed to record workout:', error);
             }
@@ -536,6 +547,7 @@ const EditSetModal: React.FC<EditSetModalProps> = ({
 interface RecordWorkoutModalProps {
   exerciseOptions: ReturnType<typeof getExerciseOptions>;
   isTestingMode: boolean;
+  selectedDate: Date;
   onClose: () => void;
   onRecord: (exerciseName: ExerciseClassName, value: number) => void;
 }
@@ -543,25 +555,41 @@ interface RecordWorkoutModalProps {
 const RecordWorkoutModal: React.FC<RecordWorkoutModalProps> = ({
   exerciseOptions,
   isTestingMode,
+  selectedDate,
   onClose,
   onRecord
 }) => {
   const [selectedExercise, setSelectedExercise] = useState<ExerciseClassName | null>(null);
   const [inputValue, setInputValue] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const handleExerciseSelect = (exerciseName: ExerciseClassName) => {
     setSelectedExercise(exerciseName);
   };
 
-  const handleRecord = () => {
+  const handleRecord = async () => {
     if (!selectedExercise || !inputValue) return;
-    
+
     const ExerciseClass = getExerciseClass(selectedExercise);
     if (!ExerciseClass.validate(inputValue)) {
       return; // Invalid input
     }
 
-    onRecord(selectedExercise, parseInt(inputValue));
+    setIsRecording(true);
+
+    try {
+      await onRecord(selectedExercise, parseInt(inputValue));
+      setShowSuccess(true);
+
+      // Auto-close after showing success
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } catch (error) {
+      // Handle error case
+      setIsRecording(false);
+    }
   };
 
   const selectedExerciseClass = selectedExercise ? getExerciseClass(selectedExercise) : null;
@@ -621,6 +649,23 @@ const RecordWorkoutModal: React.FC<RecordWorkoutModalProps> = ({
             <button className="cancel-btn" onClick={onClose}>
               Cancel
             </button>
+          </div>
+        )}
+
+        {/* Recording Loading Overlay */}
+        {(isRecording || showSuccess) && (
+          <div className="record-loading-overlay">
+            {!showSuccess ? (
+              <>
+                <div className="loading-spinner"></div>
+                <span className="loading-text">Saving...</span>
+              </>
+            ) : (
+              <>
+                <div className="success-checkmark">✓</div>
+                <span className="loading-text">Saved!</span>
+              </>
+            )}
           </div>
         )}
       </div>

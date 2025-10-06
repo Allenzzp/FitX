@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { getUserLocalDate, createDailySummaryDate } from '../utils/dateUtils';
 import './WorkoutCalendar.css';
@@ -26,12 +26,14 @@ interface WorkoutCalendarProps {
   selectedDate: Date;
   onDateSelect: (date: Date, workoutData?: StrengthWorkout | null) => void;
   isTestingMode: boolean;
+  onWorkoutUpdate?: (updateFunction: (date: Date, updatedWorkout: StrengthWorkout | null) => void) => void;
 }
 
 const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
   selectedDate,
   onDateSelect,
-  isTestingMode
+  isTestingMode,
+  onWorkoutUpdate
 }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [workoutData, setWorkoutData] = useState<Record<string, StrengthWorkout>>({});
@@ -132,28 +134,47 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
     }
   };
 
+  // Handle workout updates from StrengthTracker
+  const handleWorkoutUpdate = useCallback((date: Date, updatedWorkout: StrengthWorkout | null) => {
+    const dateKey = formatDateForAPI(date);
+    setWorkoutData(prev => {
+      const newData = { ...prev };
+      if (updatedWorkout) {
+        newData[dateKey] = updatedWorkout;
+      } else {
+        delete newData[dateKey];
+      }
+      return newData;
+    });
+  }, []);
+
   // Load data when month changes
   useEffect(() => {
     const days = getCalendarDays();
     loadWorkoutData(days);
   }, [currentMonth, isTestingMode]);
 
-  // After data loads, trigger initial date selection if no date selected yet
+  // When data loads and we're viewing today, populate the tracker
   useEffect(() => {
-    const dataKeys = Object.keys(workoutData);
-    if (dataKeys.length > 0) {
-      // Find today's data if available, otherwise keep current selection
+    if (!loading) {
       const today = new Date();
-      const todayKey = formatDateForAPI(today);
-      const todayWorkout = workoutData[todayKey];
-      
-      // If viewing current month and today has data, auto-select today
-      if (today.getMonth() === currentMonth.getMonth() && 
-          today.getFullYear() === currentMonth.getFullYear()) {
+      if (today.getMonth() === currentMonth.getMonth() &&
+          today.getFullYear() === currentMonth.getFullYear() &&
+          selectedDate.toDateString() === today.toDateString()) {
+        const todayKey = formatDateForAPI(today);
+        const todayWorkout = workoutData[todayKey] || null;
         onDateSelect(today, todayWorkout);
       }
     }
-  }, [workoutData]);
+  }, [loading]);
+
+
+  // Register our update function with StrengthTracker
+  useEffect(() => {
+    onWorkoutUpdate?.(handleWorkoutUpdate);
+  }, [onWorkoutUpdate, handleWorkoutUpdate]);
+
+
 
   const handleDateClick = (date: Date) => {
     // Allow clicking any date - actions are limited based on date state
@@ -198,8 +219,9 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
 
   const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+
   return (
-    <div className="workout-calendar">
+    <div className="workout-calendar" style={{ position: 'relative' }}>
       {/* Calendar Header */}
       <div className="calendar-header">
         <button 
@@ -253,6 +275,14 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
           );
         })}
       </div>
+
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="calendar-loading-overlay">
+          <div className="loading-spinner"></div>
+          <span className="loading-text">Loading Workouts...</span>
+        </div>
+      )}
     </div>
   );
 };

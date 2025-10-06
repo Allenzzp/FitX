@@ -473,6 +473,7 @@
   padding: 24px;
   max-width: 400px;
   width: 90%;
+  position: relative;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
@@ -813,4 +814,70 @@
   .set-time {
     max-width: 80px; /* Prevent time column from expanding too much on desktop */
   }
+}
+
+/* Record Modal Loading Overlay */
+.record-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  gap: 16px;
+  border-radius: 16px;
+}
+
+.record-loading-overlay .loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e0e0e0;
+  border-top: 3px solid #007AFF;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.record-loading-overlay .loading-text {
+  color: #2C2C2E;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.success-checkmark {
+  width: 40px;
+  height: 40px;
+  background: #34C759;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  animation: checkmarkPop 0.3s ease-out;
+}
+
+@keyframes checkmarkPop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }

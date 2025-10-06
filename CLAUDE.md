@@ -91,3 +91,7 @@ When encountering bugs, resist the impulse to immediately add incremental fixes 
 4. **Choose Deliberately** - Either redesign completely or patch strategically, but avoid endless incremental fixes
 
 **Goal**: Prevent back-and-forth bug cycles by addressing fundamental design issues rather than surface symptoms. Not every bug needs redesign, but always consider it as an option.
+
+## Timezone Handling Rule
+
+**UTC Everywhere**: Store all timestamps in UTC format, group/display by user's local timezone to prevent date mismatch bugs. Uses `UTC - 7 = PDT` for Vancouver timezone calculations.
