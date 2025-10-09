@@ -1,4 +1,5 @@
 const { connectToDatabase } = require('./utils/db');
+const { requireAuth } = require('./utils/auth-helper');
 
 // Helper function to get current time
 const getCurrentTime = () => {
@@ -6,15 +7,19 @@ const getCurrentTime = () => {
 };
 
 exports.handler = async (event, context) => {
-  const { httpMethod, body, pathParameters, queryStringParameters } = event;
-  
+  const { httpMethod, body, headers } = event;
+
+  // Require authentication for all requests
+  const authResult = requireAuth(headers);
+  if (authResult.error) {
+    return authResult.error;
+  }
+  const { userId } = authResult;
+
   try {
     const client = await connectToDatabase();
     const db = client.db('fitx');
     const collection = db.collection('userRepPatterns');
-    
-    // Extract userId from path or query params (currently hardcoded for single user)
-    const userId = pathParameters?.userId || queryStringParameters?.userId || 'default-user';
     
     switch (httpMethod) {
       case 'GET':
@@ -39,7 +44,8 @@ exports.handler = async (event, context) => {
           statusCode: 200,
           headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true'
           },
           body: JSON.stringify({
             userId: userPattern.userId,
@@ -104,7 +110,8 @@ exports.handler = async (event, context) => {
           statusCode: 200,
           headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true'
           },
           body: JSON.stringify({
             ...updatedPattern,
@@ -172,7 +179,8 @@ exports.handler = async (event, context) => {
           statusCode: 201,
           headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true'
           },
           body: JSON.stringify({
             ...newPattern,
@@ -185,7 +193,8 @@ exports.handler = async (event, context) => {
           statusCode: 405,
           headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true'
           },
           body: JSON.stringify({ error: 'Method not allowed' })
         };

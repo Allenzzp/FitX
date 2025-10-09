@@ -1,5 +1,6 @@
 const { connectToDatabase } = require('./utils/db');
 const { ObjectId } = require('mongodb');
+const { requireAuth } = require('./utils/auth-helper');
 
 // Helper function to get current local time (uses server time, but frontend will send local times)
 const getCurrentTime = () => {
@@ -126,30 +127,39 @@ const calculateTimerStatus = (session) => {
 };
 
 exports.handler = async (event, context) => {
-  const { httpMethod, body, queryStringParameters } = event;
-  
+  const { httpMethod, body, queryStringParameters, headers } = event;
+
+  // Require authentication for all requests
+  const authResult = requireAuth(headers);
+  if (authResult.error) {
+    return authResult.error;
+  }
+  const { userId } = authResult;
+
   try {
     const client = await connectToDatabase();
     const db = client.db('fitx');
     const collection = db.collection('trainingSessions');
-    
+
     switch (httpMethod) {
       case 'GET':
         // Check if this is a request to check for test data
         if (queryStringParameters?.checkTestData) {
-          const testSessions = await collection.find({ testing: true }).toArray();
+          const testSessions = await collection.find({ userId, testing: true }).toArray();
           return {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ hasTestData: testSessions.length > 0 })
           };
         }
-        
-        // Get current non-ended session (active or paused)
+
+        // Get current non-ended session (active or paused) for this user
         const currentSession = await collection.findOne({
+          userId,
           status: { $ne: "ended" }
         });
 
@@ -167,7 +177,8 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(sessionWithTimer)
           };
@@ -176,7 +187,8 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(null)
           };
@@ -185,24 +197,26 @@ exports.handler = async (event, context) => {
       case 'POST':
         // Create new training session
         const sessionData = JSON.parse(body);
-        
-        // Check if there's already a non-ended session
-        const existingSession = await collection.findOne({ status: { $ne: "ended" } });
+
+        // Check if there's already a non-ended session for this user
+        const existingSession = await collection.findOne({ userId, status: { $ne: "ended" } });
         if (existingSession) {
           return {
             statusCode: 400,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
-            body: JSON.stringify({ 
-              error: 'A session already exists. End current session first.' 
+            body: JSON.stringify({
+              error: 'A session already exists. End current session first.'
             })
           };
         }
-        
+
         const now = sessionData.startTime ? new Date(sessionData.startTime) : getCurrentTime();
         const newSession = {
+          userId,  // Add userId to new session
           goal: sessionData.goal,
           completed: 0,
           startTime: now,
@@ -227,11 +241,12 @@ exports.handler = async (event, context) => {
           statusCode: 201,
           headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': 'true'
           },
-          body: JSON.stringify({ 
-            ...newSession, 
-            _id: result.insertedId 
+          body: JSON.stringify({
+            ...newSession,
+            _id: result.insertedId
           })
         };
         
@@ -245,7 +260,8 @@ exports.handler = async (event, context) => {
             statusCode: 400,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ error: 'Session ID is required' })
           };
@@ -260,7 +276,8 @@ exports.handler = async (event, context) => {
             statusCode: 400,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ error: 'Invalid session ID format' })
           };
@@ -295,7 +312,7 @@ exports.handler = async (event, context) => {
           }
 
           // End current training segment
-          const session = await collection.findOne({ _id: objectId });
+          const session = await collection.findOne({ _id: objectId, userId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
             const lastSegmentIndex = session.trainingSegments.length - 1;
             if (!session.trainingSegments[lastSegmentIndex].end) {
@@ -355,7 +372,7 @@ exports.handler = async (event, context) => {
           }
 
           // End current training segment
-          const session = await collection.findOne({ _id: objectId });
+          const session = await collection.findOne({ _id: objectId, userId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
             const lastSegmentIndex = session.trainingSegments.length - 1;
             if (!session.trainingSegments[lastSegmentIndex].end) {
@@ -371,7 +388,7 @@ exports.handler = async (event, context) => {
           updateFields.pausedAt = null;
           // Timer state is calculated dynamically - no need to store it
           // End current training segment and calculate actual workout duration
-          const session = await collection.findOne({ _id: objectId });
+          const session = await collection.findOne({ _id: objectId, userId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
             const lastSegmentIndex = session.trainingSegments.length - 1;
             if (!session.trainingSegments[lastSegmentIndex].end) {
@@ -391,7 +408,7 @@ exports.handler = async (event, context) => {
           updateFields.pausedAt = null;
           // Timer state is calculated dynamically - no need to store it
           // End current training segment and calculate actual workout duration
-          const session = await collection.findOne({ _id: objectId });
+          const session = await collection.findOne({ _id: objectId, userId });
           if (session && session.trainingSegments && session.trainingSegments.length > 0) {
             const lastSegmentIndex = session.trainingSegments.length - 1;
             if (!session.trainingSegments[lastSegmentIndex].end) {
@@ -422,7 +439,7 @@ exports.handler = async (event, context) => {
         }
 
         const updateResult = await collection.updateOne(
-          { _id: objectId },
+          { _id: objectId, userId },
           updateOperation
         );
 
@@ -431,13 +448,14 @@ exports.handler = async (event, context) => {
             statusCode: 404,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ error: 'Session not found' })
           };
         }
 
-        const updatedSession = await collection.findOne({ _id: objectId });
+        const updatedSession = await collection.findOne({ _id: objectId, userId });
 
         // For resume action: use stored paused timer state and then clear it
         if (updateData.action === 'resume' && resumeTimerState) {
@@ -451,7 +469,7 @@ exports.handler = async (event, context) => {
 
           // Clear the paused timer state for future calculations
           await collection.updateOne(
-            { _id: objectId },
+            { _id: objectId, userId },
             { $set: { pausedTimerState: null } }
           );
 
@@ -459,7 +477,8 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(responseSession)
           };
@@ -484,14 +503,15 @@ exports.handler = async (event, context) => {
         };
         
       case 'DELETE':
-        // Delete test data
+        // Delete test data (only for this user)
         if (queryStringParameters?.deleteTestData) {
-          const deleteResult = await collection.deleteMany({ testing: true });
+          const deleteResult = await collection.deleteMany({ userId, testing: true });
           return {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ 
               deletedCount: deleteResult.deletedCount,

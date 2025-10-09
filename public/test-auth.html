@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FitX Auth Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    .test-section {
+      margin-bottom: 30px;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    button {
+      background: #81D8D0;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #6bc7bf;
+    }
+    input {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      max-width: 300px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .response {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+  <h1>FitX Auth API Test</h1>
+
+  <!-- Register Test -->
+  <div class="test-section">
+    <h2>1. Register New User</h2>
+    <input type="email" id="regEmail" placeholder="Email" value="test@example.com">
+    <input type="password" id="regPassword" placeholder="Password" value="password123">
+    <input type="text" id="regUsername" placeholder="Username" value="testuser">
+    <br><br>
+    <button onclick="testRegister()">Register</button>
+    <div id="regResponse" class="response"></div>
+  </div>
+
+  <!-- Verify Email Test -->
+  <div class="test-section">
+    <h2>2. Verify Email</h2>
+    <p><strong>Check your email for verification link, or use token below:</strong></p>
+    <input type="text" id="verifyToken" placeholder="Verification Token">
+    <br><br>
+    <button onclick="testVerifyEmail()">Verify Email</button>
+    <div id="verifyResponse" class="response"></div>
+  </div>
+
+  <!-- Resend Verification Test -->
+  <div class="test-section">
+    <h2>3. Resend Verification Email</h2>
+    <input type="email" id="resendEmail" placeholder="Email" value="test@example.com">
+    <br><br>
+    <button onclick="testResendVerification()">Resend Verification</button>
+    <div id="resendResponse" class="response"></div>
+  </div>
+
+  <!-- Login Test -->
+  <div class="test-section">
+    <h2>4. Login</h2>
+    <input type="email" id="loginEmail" placeholder="Email" value="test@example.com">
+    <input type="password" id="loginPassword" placeholder="Password" value="password123">
+    <br><br>
+    <button onclick="testLogin()">Login</button>
+    <div id="loginResponse" class="response"></div>
+  </div>
+
+  <!-- Auth Verify Test -->
+  <div class="test-section">
+    <h2>5. Verify Auth Status</h2>
+    <button onclick="testAuthVerify()">Check Auth</button>
+    <div id="authVerifyResponse" class="response"></div>
+  </div>
+
+  <!-- Logout Test -->
+  <div class="test-section">
+    <h2>6. Logout</h2>
+    <button onclick="testLogout()">Logout</button>
+    <div id="logoutResponse" class="response"></div>
+  </div>
+
+  <!-- Update Email Test -->
+  <div class="test-section">
+    <h2>7. Update Registration Email</h2>
+    <input type="email" id="oldEmail" placeholder="Old Email" value="test@example.com">
+    <input type="email" id="newEmail" placeholder="New Email" value="newemail@example.com">
+    <input type="password" id="updatePassword" placeholder="Password" value="password123">
+    <br><br>
+    <button onclick="testUpdateEmail()">Update Email</button>
+    <div id="updateEmailResponse" class="response"></div>
+  </div>
+
+  <script>
+    const API_BASE = '/.netlify/functions';
+
+    async function makeRequest(url, options = {}) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          credentials: 'include', // Important for cookies
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+          }
+        });
+        const data = await response.json();
+        return { status: response.status, data };
+      } catch (error) {
+        return { status: 0, data: { error: error.message } };
+      }
+    }
+
+    function displayResponse(elementId, result) {
+      const element = document.getElementById(elementId);
+      element.className = 'response ' + (result.status >= 200 && result.status < 300 ? 'success' : 'error');
+      element.textContent = `Status: ${result.status}\n${JSON.stringify(result.data, null, 2)}`;
+    }
+
+    async function testRegister() {
+      const email = document.getElementById('regEmail').value;
+      const password = document.getElementById('regPassword').value;
+      const username = document.getElementById('regUsername').value;
+
+      const result = await makeRequest(`${API_BASE}/auth-register`, {
+        method: 'POST',
+        body: JSON.stringify({ email, password, username })
+      });
+
+      displayResponse('regResponse', result);
+    }
+
+    async function testVerifyEmail() {
+      const token = document.getElementById('verifyToken').value;
+      const result = await makeRequest(`${API_BASE}/verify-email?token=${token}`, {
+        method: 'GET'
+      });
+      displayResponse('verifyResponse', result);
+    }
+
+    async function testResendVerification() {
+      const email = document.getElementById('resendEmail').value;
+      const result = await makeRequest(`${API_BASE}/resend-verification`, {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
+      displayResponse('resendResponse', result);
+    }
+
+    async function testLogin() {
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+
+      const result = await makeRequest(`${API_BASE}/auth-login`, {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+
+      displayResponse('loginResponse', result);
+    }
+
+    async function testAuthVerify() {
+      const result = await makeRequest(`${API_BASE}/auth-verify`, {
+        method: 'GET'
+      });
+      displayResponse('authVerifyResponse', result);
+    }
+
+    async function testLogout() {
+      const result = await makeRequest(`${API_BASE}/auth-logout`, {
+        method: 'POST'
+      });
+      displayResponse('logoutResponse', result);
+    }
+
+    async function testUpdateEmail() {
+      const oldEmail = document.getElementById('oldEmail').value;
+      const newEmail = document.getElementById('newEmail').value;
+      const password = document.getElementById('updatePassword').value;
+
+      const result = await makeRequest(`${API_BASE}/update-registration-email`, {
+        method: 'PUT',
+        body: JSON.stringify({ oldEmail, newEmail, password })
+      });
+
+      displayResponse('updateEmailResponse', result);
+    }
+  </script>
+</body>
+</html>

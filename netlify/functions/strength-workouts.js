@@ -1,5 +1,6 @@
 const { connectToDatabase } = require('./utils/db');
 const { ObjectId } = require('mongodb');
+const { requireAuth } = require('./utils/auth-helper');
 
 // Helper function to get current local time
 const getCurrentTime = () => {
@@ -28,23 +29,31 @@ const createDailyDate = (utcTimestamp) => {
 };
 
 exports.handler = async (event, context) => {
-  const { httpMethod, body, queryStringParameters } = event;
-  
+  const { httpMethod, body, queryStringParameters, headers } = event;
+
+  // Require authentication for all requests
+  const authResult = requireAuth(headers);
+  if (authResult.error) {
+    return authResult.error;
+  }
+  const { userId } = authResult;
+
   try {
     const client = await connectToDatabase();
     const db = client.db('fitx');
     const collection = db.collection('strengthWorkouts');
-    
+
     switch (httpMethod) {
       case 'GET':
         // Check if this is a request to check for test data
         if (queryStringParameters?.checkTestData) {
-          const testWorkouts = await collection.find({ testing: true }).toArray();
+          const testWorkouts = await collection.find({ userId, testing: true }).toArray();
           return {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ hasTestData: testWorkouts.length > 0 })
           };
@@ -62,6 +71,7 @@ exports.handler = async (event, context) => {
           
           // Database stores date as ISO string, so compare with strings
           const workouts = await collection.find({
+            userId,
             date: {
               $gte: start.toISOString(),
               $lte: end.toISOString()
@@ -72,7 +82,8 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(workouts)
           };
@@ -91,6 +102,7 @@ exports.handler = async (event, context) => {
           const dayEnd = new Date(localYear, localMonth, localDay, 23, 59, 59, 999);
 
           const workouts = await collection.findOne({
+            userId,
             date: {
               $gte: dayStart.toISOString(),
               $lte: dayEnd.toISOString()
@@ -101,7 +113,8 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(workouts || { date: targetDate, exercises: [] })
           };
@@ -109,8 +122,9 @@ exports.handler = async (event, context) => {
         
         // Get today's workouts by default
         const today = createDailyDate(new Date());
-        const todaysWorkouts = await collection.findOne({ 
-          date: today 
+        const todaysWorkouts = await collection.findOne({
+          userId,
+          date: today
         });
         
         return {
@@ -138,6 +152,7 @@ exports.handler = async (event, context) => {
         const dayEnd = new Date(localYear, localMonth, localDay, 23, 59, 59, 999);
 
         let existingWorkout = await collection.findOne({
+          userId,
           date: {
             $gte: dayStart.toISOString(),
             $lte: dayEnd.toISOString()
@@ -179,13 +194,15 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(existingWorkout)
           };
         } else {
           // Create new workout document for this date
           const newWorkout = {
+            userId,
             date: recordingTimestamp,
             exercises: [{
               exercise: workoutData.exercise,
@@ -206,7 +223,8 @@ exports.handler = async (event, context) => {
             statusCode: 201,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(newWorkout)
           };
@@ -222,7 +240,8 @@ exports.handler = async (event, context) => {
             statusCode: 400,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ error: 'Workout ID required' })
           };
@@ -236,8 +255,8 @@ exports.handler = async (event, context) => {
         
         // Update the workout document
         const result = await collection.updateOne(
-          { _id: new ObjectId(workoutId) },
-          { 
+          { _id: new ObjectId(workoutId), userId },
+          {
             $set: {
               ...updateFields,
               updatedAt: getCurrentTime().toISOString()
@@ -250,14 +269,15 @@ exports.handler = async (event, context) => {
             statusCode: 404,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ error: 'Workout not found' })
           };
         }
         
         // Fetch and return updated document
-        const updatedWorkout = await collection.findOne({ _id: new ObjectId(workoutId) });
+        const updatedWorkout = await collection.findOne({ _id: new ObjectId(workoutId), userId });
         
         return {
           statusCode: 200,
@@ -271,16 +291,17 @@ exports.handler = async (event, context) => {
       case 'DELETE':
         // Delete test data
         if (queryStringParameters?.deleteTestData === 'true') {
-          const deleteResult = await collection.deleteMany({ testing: true });
+          const deleteResult = await collection.deleteMany({ userId, testing: true });
           return {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
               message: 'Test strength workouts deleted successfully',
-              deletedCount: deleteResult.deletedCount 
+              deletedCount: deleteResult.deletedCount
             })
           };
         }

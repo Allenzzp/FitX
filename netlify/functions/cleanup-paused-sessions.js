@@ -1,4 +1,5 @@
 const { connectToDatabase } = require('./utils/db');
+const { requireAuth } = require('./utils/auth-helper');
 
 // Helper function to get current time
 const getCurrentTime = () => {
@@ -9,13 +10,20 @@ const getCurrentTime = () => {
 const isNewDay = (date1, date2) => {
   const d1 = new Date(date1);
   const d2 = new Date(date2);
-  return d1.getDate() !== d2.getDate() || 
-         d1.getMonth() !== d2.getMonth() || 
+  return d1.getDate() !== d2.getDate() ||
+         d1.getMonth() !== d2.getMonth() ||
          d1.getFullYear() !== d2.getFullYear();
 };
 
 exports.handler = async (event, context) => {
-  const { httpMethod } = event;
+  const { httpMethod, headers } = event;
+
+  // Require authentication for all requests
+  const authResult = requireAuth(headers);
+  if (authResult.error) {
+    return authResult.error;
+  }
+  const { userId } = authResult;
   
   try {
     const client = await connectToDatabase();
@@ -35,10 +43,11 @@ exports.handler = async (event, context) => {
     }
     
     console.log('Starting cleanup of paused sessions...');
-    
-    // Find all paused sessions
-    const pausedSessions = await sessionsCollection.find({ 
-      status: "paused" 
+
+    // Find all paused sessions for this user
+    const pausedSessions = await sessionsCollection.find({
+      userId,
+      status: "paused"
     }).toArray();
     
     console.log(`Found ${pausedSessions.length} paused sessions`);
@@ -70,7 +79,8 @@ exports.handler = async (event, context) => {
           
           // Create or update daily summary for the pause date
           await summariesCollection.updateOne(
-            { 
+            {
+              userId,
               date: summaryDate,
               testing: session.testing || false
             },
@@ -104,7 +114,8 @@ exports.handler = async (event, context) => {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': 'true'
       },
       body: JSON.stringify({ 
         success: true,
@@ -119,7 +130,8 @@ exports.handler = async (event, context) => {
       statusCode: 500,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': 'true'
       },
       body: JSON.stringify({ 
         success: false,

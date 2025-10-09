@@ -1,21 +1,54 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import './HomePage.css';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const [showUserId, setShowUserId] = useState(false);
 
   const handleCardClick = (route: string) => {
     navigate(route);
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
+
+  const toggleUserDisplay = () => {
+    setShowUserId(!showUserId);
+  };
+
+  const formatUserId = (userId: string): string => {
+    const padded = userId.padStart(8, '0');
+    return `${padded.slice(0, 4)}-${padded.slice(4)}`;
+  };
+
   return (
     <div className="homepage-container">
+      {user && (
+        <div className="user-info">
+          <span className="user-display" onClick={toggleUserDisplay}>
+            {showUserId ? formatUserId(user.userId) : user.username}
+          </span>
+          <span className="separator">•</span>
+          <button className="logout-btn" onClick={handleLogout}>
+            Logout
+          </button>
+        </div>
+      )}
+
       <h1 className="homepage-title">FitX</h1>
       <p className="homepage-subtitle">Your Personal Training Helper</p>
-      
+
       <div className="workout-cards">
-        <div 
+        <div
           className="workout-card workout-card--cardio"
           onClick={() => handleCardClick('/cardio')}
         >
@@ -23,8 +56,8 @@ const HomePage: React.FC = () => {
           <h2 className="card-title">Cardio</h2>
           <p className="card-description">Jump rope, running, and endurance training</p>
         </div>
-        
-        <div 
+
+        <div
           className="workout-card workout-card--strength"
           onClick={() => handleCardClick('/strength')}
         >

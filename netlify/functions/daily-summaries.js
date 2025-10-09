@@ -1,10 +1,8 @@
 const { connectToDatabase } = require('./utils/db');
+const { requireAuth } = require('./utils/auth-helper');
 
-// Cache for first record date (7-day expiry)
-let firstRecordCache = {
-  date: null,
-  expiry: null
-};
+// Cache for first record date (7-day expiry) - now per user
+let firstRecordCache = new Map();
 
 // Helper function to get current time
 const getCurrentTime = () => {
@@ -16,26 +14,30 @@ const parseDate = (dateInput) => {
   return dateInput ? new Date(dateInput) : getCurrentTime();
 };
 
-// Get first record date with 7-day caching
-const getFirstRecordDate = async (collection) => {
+// Get first record date with 7-day caching (per user)
+const getFirstRecordDate = async (collection, userId) => {
   const now = Date.now();
-  
-  // Check if cache is valid
-  if (firstRecordCache.date && firstRecordCache.expiry && now < firstRecordCache.expiry) {
-    return firstRecordCache.date;
+  const cacheKey = `user_${userId}`;
+
+  // Check if cache is valid for this user
+  const cached = firstRecordCache.get(cacheKey);
+  if (cached && cached.expiry && now < cached.expiry) {
+    return cached.date;
   }
-  
+
   // Cache expired or empty, fetch from database
-  const firstRecord = await collection.findOne({}, { sort: { date: 1 } });
-  
+  const firstRecord = await collection.findOne({ userId }, { sort: { date: 1 } });
+
   if (!firstRecord) {
     throw new Error('No records found in database');
   }
-  
+
   // Cache for 7 days
-  firstRecordCache.date = firstRecord.date;
-  firstRecordCache.expiry = now + (7 * 24 * 60 * 60 * 1000);
-  
+  firstRecordCache.set(cacheKey, {
+    date: firstRecord.date,
+    expiry: now + (7 * 24 * 60 * 60 * 1000)
+  });
+
   return firstRecord.date;
 };
 
@@ -87,19 +89,26 @@ const getWeekDateRanges = (weekNumbers, firstRecordDate) => {
 };
 
 exports.handler = async (event, context) => {
-  const { httpMethod, body, queryStringParameters } = event;
-  
+  const { httpMethod, body, queryStringParameters, headers } = event;
+
+  // Require authentication for all requests
+  const authResult = requireAuth(headers);
+  if (authResult.error) {
+    return authResult.error;
+  }
+  const { userId } = authResult;
+
   try {
     const client = await connectToDatabase();
     const db = client.db('fitx');
     const collection = db.collection('dailySummaries');
-    
+
     switch (httpMethod) {
       case 'GET':
         // New metadata endpoint
         if (queryStringParameters?.metadata) {
           try {
-            const firstRecordDate = await getFirstRecordDate(collection);
+            const firstRecordDate = await getFirstRecordDate(collection, userId);
             const totalWeeks = calculateTotalWeeks(firstRecordDate);
             
             // Calculate current week number based on today's date
@@ -112,7 +121,8 @@ exports.handler = async (event, context) => {
               statusCode: 200,
               headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
               },
               body: JSON.stringify({
                 firstRecordDate: firstRecordDate,
@@ -126,7 +136,8 @@ exports.handler = async (event, context) => {
                 statusCode: 404,
                 headers: {
                   'Content-Type': 'application/json',
-                  'Access-Control-Allow-Origin': '*'
+                  'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
                 },
                 body: JSON.stringify({ error: 'No workout records found' })
               };
@@ -137,12 +148,13 @@ exports.handler = async (event, context) => {
         
         // Check if this is a request to check for test data
         if (queryStringParameters?.checkTestData) {
-          const testSummaries = await collection.find({ testing: true }).toArray();
+          const testSummaries = await collection.find({ userId, testing: true }).toArray();
           return {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ hasTestData: testSummaries.length > 0 })
           };
@@ -173,7 +185,8 @@ exports.handler = async (event, context) => {
               statusCode: 400,
               headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
               },
               body: JSON.stringify({ error: `Invalid weekNumbers parameter: ${error.message}` })
             };
@@ -181,7 +194,7 @@ exports.handler = async (event, context) => {
           
           try {
             // Get first record date and calculate total available weeks
-            const firstRecordDate = await getFirstRecordDate(collection);
+            const firstRecordDate = await getFirstRecordDate(collection, userId);
             const totalWeeks = calculateTotalWeeks(firstRecordDate);
             
             // Validate requested week numbers
@@ -191,7 +204,8 @@ exports.handler = async (event, context) => {
                 statusCode: 400,
                 headers: {
                   'Content-Type': 'application/json',
-                  'Access-Control-Allow-Origin': '*'
+                  'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
                 },
                 body: JSON.stringify({ 
                   error: `Week numbers ${invalidWeeks.join(',')} don't exist. Available weeks: 1-${totalWeeks}` 
@@ -202,8 +216,9 @@ exports.handler = async (event, context) => {
             // Calculate date ranges for requested weeks
             const dateRanges = getWeekDateRanges(weekNumbers, firstRecordDate);
             
-            // Query database with date range
+            // Query database with date range (filtered by userId)
             const summaries = await collection.find({
+              userId,
               date: {
                 $gte: dateRanges.start,
                 $lte: dateRanges.end
@@ -215,7 +230,8 @@ exports.handler = async (event, context) => {
               statusCode: 200,
               headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
               },
               body: JSON.stringify({
                 data: summaries,
@@ -233,7 +249,8 @@ exports.handler = async (event, context) => {
                 statusCode: 404,
                 headers: {
                   'Content-Type': 'application/json',
-                  'Access-Control-Allow-Origin': '*'
+                  'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
                 },
                 body: JSON.stringify({ error: 'No workout records found' })
               };
@@ -257,6 +274,7 @@ exports.handler = async (event, context) => {
           endOfWeek.setHours(23, 59, 59, 999);
           
           const summaries = await collection.find({
+            userId,
             date: {
               $gte: startOfWeek,
               $lte: endOfWeek
@@ -267,7 +285,8 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(summaries)
           };
@@ -278,9 +297,10 @@ exports.handler = async (event, context) => {
         const summaryData = JSON.parse(body);
         const targetDate = parseDate(summaryData.date);
         
-        // Check if summary already exists for this date and testing status
+        // Check if summary already exists for this user, date, and testing status
         const testing = summaryData.testing === true;
         const existing = await collection.findOne({
+          userId,
           date: targetDate,
           testing: testing
         });
@@ -288,7 +308,7 @@ exports.handler = async (event, context) => {
         if (existing) {
           // Update existing summary
           const updateResult = await collection.updateOne(
-            { date: targetDate },
+            { userId, date: targetDate },
             { 
               $inc: { 
                 totalJumps: summaryData.totalJumps || 0,
@@ -302,18 +322,20 @@ exports.handler = async (event, context) => {
             }
           );
           
-          const updated = await collection.findOne({ date: targetDate });
+          const updated = await collection.findOne({ userId, date: targetDate });
           return {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify(updated)
           };
         } else {
           // Create new summary
           const newSummary = {
+            userId,  // Add userId to new summary
             date: targetDate,
             localDate: summaryData.localDate || null,  // Add localDate for timezone-safe filtering
             totalJumps: summaryData.totalJumps || 0,
@@ -330,7 +352,8 @@ exports.handler = async (event, context) => {
             statusCode: 201,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({
               ...newSummary,
@@ -343,10 +366,11 @@ exports.handler = async (event, context) => {
         // Direct update of daily summary (for historical data)
         const updateData = JSON.parse(body);
         const updateDate = parseDate(updateData.date);
-        
+
         const updateResult = await collection.replaceOne(
-          { date: updateDate },
+          { userId, date: updateDate },
           {
+            userId,  // Include userId in replacement
             date: updateDate,
             totalJumps: updateData.totalJumps,
             sessionsCount: updateData.sessionsCount,
@@ -356,8 +380,8 @@ exports.handler = async (event, context) => {
           },
           { upsert: true }
         );
-        
-        const updatedDoc = await collection.findOne({ date: updateDate });
+
+        const updatedDoc = await collection.findOne({ userId, date: updateDate });
         
         return {
           statusCode: 200,
@@ -369,14 +393,15 @@ exports.handler = async (event, context) => {
         };
         
       case 'DELETE':
-        // Delete test data
+        // Delete test data (only for this user)
         if (queryStringParameters?.deleteTestData) {
-          const deleteResult = await collection.deleteMany({ testing: true });
+          const deleteResult = await collection.deleteMany({ userId, testing: true });
           return {
             statusCode: 200,
             headers: {
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*'
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': 'true'
             },
             body: JSON.stringify({ 
               deletedCount: deleteResult.deletedCount,

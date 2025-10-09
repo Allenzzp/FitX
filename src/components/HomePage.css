@@ -4,6 +4,43 @@
   min-height: 100vh;
   padding: 30px 40px 40px;
   background: white;
+  position: relative;
+}
+
+.user-info {
+  position: absolute;
+  top: 30px;
+  right: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  color: #6e6e73;
+  font-weight: 500;
+}
+
+.user-display {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.separator {
+  user-select: none;
+}
+
+.logout-btn {
+  background: none;
+  border: none;
+  color: #6e6e73;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s ease;
+}
+
+.logout-btn:hover {
+  color: #2C2C2E;
 }
 
 .homepage-title {
@@ -97,39 +134,49 @@
   .homepage-container {
     padding: 20px 15px;
   }
-  
+
+  .user-info {
+    top: 20px;
+    right: 15px;
+    font-size: 0.9rem;
+  }
+
+  .logout-btn {
+    font-size: 0.9rem;
+  }
+
   .homepage-title {
     font-size: 2.5rem;
   }
-  
+
   .homepage-subtitle {
     font-size: 1.1rem;
     margin-bottom: 40px;
   }
-  
+
   .workout-cards {
     flex-direction: column;
     gap: 20px;
-    max-width: none; /* Remove max-width constraint */
-    width: 100%; /* Full width */
+    max-width: none;
+    width: 100%;
   }
-  
+
   .workout-card {
-    padding: 40px 30px; /* Bigger padding for more impact */
-    width: 100%; /* Full width cards */
+    padding: 40px 30px;
+    width: 100%;
   }
-  
+
   .card-icon {
-    font-size: 3rem; /* Bigger icon */
+    font-size: 3rem;
     margin-bottom: 20px;
   }
-  
+
   .card-title {
-    font-size: 1.8rem; /* Bigger title */
+    font-size: 1.8rem;
     margin-bottom: 15px;
   }
-  
+
   .card-description {
-    font-size: 1rem; /* Slightly bigger description */
+    font-size: 1rem;
   }
 }
