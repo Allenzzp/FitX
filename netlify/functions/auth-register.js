@@ -127,21 +127,15 @@ exports.handler = async (event) => {
       // Don't fail registration if email fails, user can resend later
     }
 
-    // Create JWT token (even though email not verified, for cookie management)
-    const token = signToken({
-      userId: nextUserId,
-      email: sanitizedEmail,
-      username: sanitizedUsername
-    });
-
     // Format userId for display (0000-0000)
     const formattedUserId = String(nextUserId).padStart(8, '0');
     const displayUserId = `${formattedUserId.slice(0, 4)}-${formattedUserId.slice(4)}`;
 
+    // DON'T create JWT token yet - only after email verification
+    // User must verify email first before getting authenticated session
     return {
       statusCode: 201,
       headers: {
-        'Set-Cookie': createAuthCookie(token),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({

@@ -1,24 +1,31 @@
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Configure Gmail transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER || 'fitx.official.vancouver@gmail.com',
+    pass: process.env.GMAIL_APP_PASSWORD
+  }
+});
 
 /**
  * Send email verification email
  * @param {String} to - Recipient email address
  * @param {String} username - User's username
  * @param {String} verificationToken - Email verification token
- * @returns {Promise<Object>} Resend response
+ * @returns {Promise<Object>} Nodemailer response
  */
 async function sendVerificationEmail(to, username, verificationToken) {
   // Construct verification URL
   // In development: http://localhost:8888
   // In production: your actual domain
-  const baseUrl = process.env.URL || 'http://localhost:8888';
+  const baseUrl = process.env.BASE_URL || process.env.URL || 'http://localhost:8888';
   const verificationUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
 
   try {
-    const response = await resend.emails.send({
-      from: 'FitX <onboarding@resend.dev>', // For testing, use Resend's test domain
+    const response = await transporter.sendMail({
+      from: `"FitX" <${process.env.GMAIL_USER || 'fitx.official.vancouver@gmail.com'}>`,
       to: to,
       subject: 'Verify your FitX account',
       html: `

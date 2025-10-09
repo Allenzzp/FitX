@@ -25,17 +25,12 @@ const HomePage: React.FC = () => {
     setShowUserId(!showUserId);
   };
 
-  const formatUserId = (userId: string): string => {
-    const padded = userId.padStart(8, '0');
-    return `${padded.slice(0, 4)}-${padded.slice(4)}`;
-  };
-
   return (
     <div className="homepage-container">
       {user && (
         <div className="user-info">
           <span className="user-display" onClick={toggleUserDisplay}>
-            {showUserId ? formatUserId(user.userId) : user.username}
+            {showUserId ? user.userId : user.username}
           </span>
           <span className="separator">•</span>
           <button className="logout-btn" onClick={handleLogout}>
