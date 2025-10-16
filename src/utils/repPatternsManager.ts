@@ -1,8 +1,7 @@
 import axios from 'axios';
 
 const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
-const STORAGE_KEY = 'repPatterns';
-const USER_ID = 'default-user'; // Currently hardcoded for single user
+const STORAGE_KEY_PREFIX = 'repPatterns';
 
 interface RepPatterns {
   [key: string]: number; // rep count -> usage frequency
@@ -17,6 +16,16 @@ interface UserRepPatterns {
 export class RepPatternsManager {
   private patterns: RepPatterns = {};
   private initialized = false;
+  private readonly userId: string;
+  private readonly storageKey: string;
+
+  constructor(userId: string) {
+    if (!userId) {
+      throw new Error('RepPatternsManager requires a userId');
+    }
+    this.userId = userId;
+    this.storageKey = `${STORAGE_KEY_PREFIX}_${userId}`;
+  }
 
   /**
    * Initialize the rep patterns manager by fetching from DB and setting up localStorage
@@ -25,7 +34,7 @@ export class RepPatternsManager {
   async initialize(): Promise<void> {
     try {
       // Always fetch fresh patterns from database for each training period
-      const response = await axios.get(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`);
+      const response = await axios.get(`${API_BASE}/user-rep-patterns`);
 
       if (response.data && response.data.topThreeReps) {
         // Clear localStorage and initialize with fresh DB patterns (value = 2 for established patterns)
@@ -124,9 +133,9 @@ export class RepPatternsManager {
       let currentDbPatterns: number[] = [];
       
       try {
-        const currentResponse = await axios.get(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`);
+        const currentResponse = await axios.get(`${API_BASE}/user-rep-patterns`);
         currentDbPatterns = currentResponse.data?.topThreeReps || [];
-        hasEstablishedPatterns = currentDbPatterns.length >= 3;
+        hasEstablishedPatterns = currentDbPatterns.length > 0;
       } catch (error) {
         if (!(axios.isAxiosError(error) && error.response?.status === 404)) {
           throw error; // Re-throw if it's not a 404
@@ -208,7 +217,7 @@ export class RepPatternsManager {
 
       // Update database with new top 3
       if (topThree.length > 0) {
-        await axios.put(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`, {
+        await axios.put(`${API_BASE}/user-rep-patterns`, {
           topThreeReps: topThree
         });
       }
@@ -223,7 +232,7 @@ export class RepPatternsManager {
    * Save patterns to localStorage
    */
   private saveToLocalStorage(): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.patterns));
+    localStorage.setItem(this.storageKey, JSON.stringify(this.patterns));
   }
 
   /**
@@ -231,7 +240,7 @@ export class RepPatternsManager {
    */
   loadFromLocalStorage(): void {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(this.storageKey);
       this.patterns = stored ? JSON.parse(stored) : {};
     } catch (error) {
       console.error('Failed to load rep patterns from localStorage:', error);
@@ -261,7 +270,7 @@ export class RepPatternsManager {
    */
   private async refreshFromDatabase(): Promise<void> {
     try {
-      const response = await axios.get(`${API_BASE}/user-rep-patterns?userId=${USER_ID}`);
+      const response = await axios.get(`${API_BASE}/user-rep-patterns`);
       
       // Clear localStorage and reset with fresh DB patterns
       this.patterns = {};

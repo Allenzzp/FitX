@@ -6,6 +6,7 @@ import TimerPicker from './TimerPicker';
 import CircularTimer from './CircularTimer';
 import { RepPatternsManager } from '../utils/repPatternsManager';
 import { getUserLocalDate, createDailySummaryDate } from '../utils/dateUtils';
+import { useAuth } from '../contexts/AuthContext';
 import './WorkoutTracker.css';
 
 interface TrainingSession {
@@ -41,6 +42,9 @@ interface DailySummary {
 
 const WorkoutTracker: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const repPatternsManagerUserRef = useRef<string | null>(null);
+  const skipRepPatternsServerInitRef = useRef(false);
   const goalInputRef = useRef<HTMLInputElement>(null);
   const [currentSession, setCurrentSession] = useState<TrainingSession | null>(null);
   const [autoPauseTimer, setAutoPauseTimer] = useState<NodeJS.Timeout | null>(null);
@@ -64,7 +68,7 @@ const WorkoutTracker: React.FC = () => {
   const [goalInputError, setGoalInputError] = useState<string>('');
   const [repInputError, setRepInputError] = useState<string>('');
   const [quickRepOptions, setQuickRepOptions] = useState<number[]>([]);
-  const [repPatternsManager] = useState(() => new RepPatternsManager());
+  const [repPatternsManager, setRepPatternsManager] = useState<RepPatternsManager | null>(null);
   const [clickedButton, setClickedButton] = useState<number | null>(null);
   const [isRepInputFocused, setIsRepInputFocused] = useState(false);
   const [isInteractingWithButtons, setIsInteractingWithButtons] = useState(false);
@@ -81,6 +85,27 @@ const WorkoutTracker: React.FC = () => {
   const [clientTimerInterval, setClientTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const [syncInterval, setSyncInterval] = useState<NodeJS.Timeout | null>(null);
   const [clientLastRepAt, setClientLastRepAt] = useState<Date | null>(null);
+  const [isSavingReps, setIsSavingReps] = useState(false);
+
+  useEffect(() => {
+    if (!user?.userId) {
+      repPatternsManagerUserRef.current = null;
+      skipRepPatternsServerInitRef.current = false;
+      setRepPatternsManager(null);
+      setQuickRepOptions([]);
+      return;
+    }
+
+    const sanitizedUserId = user.userId.replace(/[^a-zA-Z0-9]/g, '');
+
+    if (repPatternsManagerUserRef.current === sanitizedUserId) {
+      return;
+    }
+
+    const manager = new RepPatternsManager(sanitizedUserId);
+    repPatternsManagerUserRef.current = sanitizedUserId;
+    setRepPatternsManager(manager);
+  }, [user?.userId]);
 
   const API_BASE = process.env.NODE_ENV === 'development' ? '/.netlify/functions' : '/.netlify/functions';
   
@@ -392,11 +417,56 @@ const WorkoutTracker: React.FC = () => {
     }
   };
 
-  const updateQuickRepOptions = () => {
+  const updateQuickRepOptions = (managerOverride?: RepPatternsManager | null) => {
+    const manager = managerOverride ?? repPatternsManager;
+    if (!manager) {
+      setQuickRepOptions([]);
+      return;
+    }
+
     // Bug 1 fix: Show all localStorage keys instead of just top 3
-    const options = repPatternsManager.getAllLocalStorageReps();
+    const options = manager.getAllLocalStorageReps();
     setQuickRepOptions(options);
   };
+
+  useEffect(() => {
+    if (!repPatternsManager) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const hydrateRepPatterns = async () => {
+      try {
+        repPatternsManager.loadFromLocalStorage();
+        if (!isCancelled) {
+          updateQuickRepOptions(repPatternsManager);
+        }
+
+        if (skipRepPatternsServerInitRef.current) {
+          skipRepPatternsServerInitRef.current = false;
+          return;
+        }
+
+        await repPatternsManager.initialize();
+
+        if (!isCancelled) {
+          updateQuickRepOptions(repPatternsManager);
+        }
+      } catch (error) {
+        console.error('Failed to hydrate rep patterns:', error);
+        if (!isCancelled) {
+          setQuickRepOptions([]);
+        }
+      }
+    };
+
+    hydrateRepPatterns();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [repPatternsManager]);
 
   const trackGoalUsage = async (goal: number) => {
     // Don't track the default 100 goal as specified in requirements
@@ -591,21 +661,27 @@ const WorkoutTracker: React.FC = () => {
       fetchCommonGoals().catch(error => console.error('Common goals fetch failed:', error))
     ];
 
-    // Only initialize rep patterns if NOT recovering from refresh (preserve session patterns)
-    if (!isRefreshRecovery) {
-      promises.push(
-        repPatternsManager.initialize()
-          .then(() => updateQuickRepOptions())
-          .catch(error => console.error('Rep patterns init failed:', error))
-      );
-    } else {
-      // For refresh recovery, load patterns from localStorage and update quick rep options
-      try {
-        repPatternsManager.loadFromLocalStorage();
-        updateQuickRepOptions();
-      } catch (error) {
-        console.error('Failed to load patterns from localStorage during recovery:', error);
+    if (repPatternsManager) {
+      // Only initialize rep patterns if NOT recovering from refresh (preserve session patterns)
+      if (!isRefreshRecovery) {
+        skipRepPatternsServerInitRef.current = false;
+        promises.push(
+          repPatternsManager.initialize()
+            .then(() => updateQuickRepOptions(repPatternsManager))
+            .catch(error => console.error('Rep patterns init failed:', error))
+        );
+      } else {
+        skipRepPatternsServerInitRef.current = true;
+        // For refresh recovery, load patterns from localStorage and update quick rep options
+        try {
+          repPatternsManager.loadFromLocalStorage();
+          updateQuickRepOptions(repPatternsManager);
+        } catch (error) {
+          console.error('Failed to load patterns from localStorage during recovery:', error);
+        }
       }
+    } else {
+      setQuickRepOptions([]);
     }
 
     // Wait for all but don't fail if any individual feature fails
@@ -750,11 +826,13 @@ const WorkoutTracker: React.FC = () => {
       saveSessionToLocalStorage(response.data);
 
       // Initialize rep patterns for new training period (Bug-1 fix)
-      try {
-        await repPatternsManager.initialize();
-        updateQuickRepOptions();
-      } catch (error) {
-        console.error('Failed to initialize rep patterns for new session:', error);
+      if (repPatternsManager) {
+        try {
+          await repPatternsManager.initialize();
+          updateQuickRepOptions(repPatternsManager);
+        } catch (error) {
+          console.error('Failed to initialize rep patterns for new session:', error);
+        }
       }
 
       // Check for test data after session creation (to show delete button immediately)
@@ -773,7 +851,7 @@ const WorkoutTracker: React.FC = () => {
    * Handles API calls, auto-sync, goal completion, and state updates
    */
   const processRepAddition = async (reps: number) => {
-    if (!currentSession || reps <= 0) return false;
+    if (!currentSession || reps <= 0 || isSavingReps) return false;
     
     const remainingGoal = currentSession.goal - currentSession.completed;
     
@@ -786,10 +864,13 @@ const WorkoutTracker: React.FC = () => {
     // Clear any previous errors
     setRepInputError('');
     
+    setIsSavingReps(true);
     try {
       // Track rep usage for pattern learning
-      repPatternsManager.trackRepUsage(reps);
-      updateQuickRepOptions();
+      if (repPatternsManager) {
+        repPatternsManager.trackRepUsage(reps);
+        updateQuickRepOptions(repPatternsManager);
+      }
 
       // Track client-side last rep activity timestamp
       const repTimestamp = new Date();
@@ -832,11 +913,13 @@ const WorkoutTracker: React.FC = () => {
       // Final sync and auto-complete session when goal is reached
       if (newCompleted >= currentSession.goal) {
         // Sync rep patterns before completing
-        try {
-          await repPatternsManager.syncToDatabase();
-          updateQuickRepOptions();
-        } catch (error) {
-          console.error('Failed to sync rep patterns on completion:', error);
+        if (repPatternsManager) {
+          try {
+            await repPatternsManager.syncToDatabase();
+            updateQuickRepOptions(repPatternsManager);
+          } catch (error) {
+            console.error('Failed to sync rep patterns on completion:', error);
+          }
         }
         
         // Final sync: update progress AND end session in one operation
@@ -887,11 +970,13 @@ const WorkoutTracker: React.FC = () => {
     } catch (error) {
       console.error('Failed to update progress:', error);
       return false; // Failure
+    } finally {
+      setIsSavingReps(false);
     }
   };
 
   const addQuickReps = async (reps: number) => {
-    if (!currentSession || currentSession.status === "paused") return;
+    if (!currentSession || currentSession.status === "paused" || isSavingReps) return;
     
     // Show button animation
     setClickedButton(reps);
@@ -902,7 +987,7 @@ const WorkoutTracker: React.FC = () => {
   };
 
   const addReps = async () => {
-    if (!currentSession) return;
+    if (!currentSession || isSavingReps) return;
     
     // Use default 100 if empty, otherwise validate input
     let reps = 100;
@@ -1013,11 +1098,13 @@ const WorkoutTracker: React.FC = () => {
       stopTimerSync(); // Stop timer sync when paused
 
       // Sync rep patterns before pausing
-      try {
-        await repPatternsManager.syncToDatabase();
-        updateQuickRepOptions();
-      } catch (error) {
-        console.error('Failed to sync rep patterns on pause:', error);
+      if (repPatternsManager) {
+        try {
+          await repPatternsManager.syncToDatabase();
+          updateQuickRepOptions(repPatternsManager);
+        } catch (error) {
+          console.error('Failed to sync rep patterns on pause:', error);
+        }
       }
 
       // Send client's displayed time as authoritative source
@@ -1064,11 +1151,13 @@ const WorkoutTracker: React.FC = () => {
       }
 
       // Initialize rep patterns for resumed training period (Bug-1 fix)
-      try {
-        await repPatternsManager.initialize();
-        updateQuickRepOptions();
-      } catch (error) {
-        console.error('Failed to initialize rep patterns for resumed session:', error);
+      if (repPatternsManager) {
+        try {
+          await repPatternsManager.initialize();
+          updateQuickRepOptions(repPatternsManager);
+        } catch (error) {
+          console.error('Failed to initialize rep patterns for resumed session:', error);
+        }
       }
     } catch (error) {
       console.error('Failed to resume workout:', error);
@@ -1112,11 +1201,13 @@ const WorkoutTracker: React.FC = () => {
       }
 
       // Initialize rep patterns for resumed training period (Bug-1 fix)
-      try {
-        await repPatternsManager.initialize();
-        updateQuickRepOptions();
-      } catch (error) {
-        console.error('Failed to initialize rep patterns for resumed session:', error);
+      if (repPatternsManager) {
+        try {
+          await repPatternsManager.initialize();
+          updateQuickRepOptions(repPatternsManager);
+        } catch (error) {
+          console.error('Failed to initialize rep patterns for resumed session:', error);
+        }
       }
     } catch (error) {
       console.error('Failed to resume to last activity:', error);
@@ -1128,11 +1219,13 @@ const WorkoutTracker: React.FC = () => {
     
     try {
       // Sync rep patterns before ending
-      try {
-        await repPatternsManager.syncToDatabase();
-        updateQuickRepOptions();
-      } catch (error) {
-        console.error('Failed to sync rep patterns on end:', error);
+      if (repPatternsManager) {
+        try {
+          await repPatternsManager.syncToDatabase();
+          updateQuickRepOptions(repPatternsManager);
+        } catch (error) {
+          console.error('Failed to sync rep patterns on end:', error);
+        }
       }
       
       const now = new Date();
@@ -1523,6 +1616,15 @@ const WorkoutTracker: React.FC = () => {
                 </button>
               )}
             </div>
+            <div
+              className={`saving-indicator ${isSavingReps ? 'saving-indicator--visible' : ''}`}
+              role={isSavingReps ? 'status' : undefined}
+              aria-live={isSavingReps ? 'polite' : undefined}
+              aria-hidden={isSavingReps ? undefined : true}
+            >
+              <span className="saving-indicator__spinner" aria-hidden="true"></span>
+              <span className="saving-indicator__text">Saving reps…</span>
+            </div>
           </div>
           
           {/* Right side: Circular Timer */}
@@ -1610,6 +1712,7 @@ const WorkoutTracker: React.FC = () => {
             <button 
               className="add-btn" 
               onClick={addReps}
+              disabled={isSavingReps}
             >
               +
             </button>
@@ -1629,6 +1732,7 @@ const WorkoutTracker: React.FC = () => {
                   setIsRepInputFocused(false); // Hide options after successful click
                 }}
                 onMouseLeave={() => setIsInteractingWithButtons(false)}
+                disabled={isSavingReps}
               >
                 {repCount}
               </button>
